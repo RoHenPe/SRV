@@ -4,34 +4,65 @@
 @import "tailwindcss";
 
 :root {
-  /* Material 3 / Google 2026 Colors */
+  /* Material 3 Colors - Light Mode */
   --md-sys-color-background: #F8F9FA;
   --md-sys-color-on-background: #1F1F1F;
   --md-sys-color-surface: #FFFFFF;
-  --md-sys-color-surface-variant: #E1E3E1;
+  --md-sys-color-surface-variant: #F1F3F4;
   --md-sys-color-on-surface: #1F1F1F;
-  --md-sys-color-on-surface-variant: #444746;
+  --md-sys-color-on-surface-variant: #5F6368;
   
-  --md-sys-color-primary: #0B57D0; /* Google Blue */
+  --md-sys-color-primary: #1A73E8; /* Google Blue */
   --md-sys-color-on-primary: #FFFFFF;
-  --md-sys-color-primary-container: #D3E3FD;
-  --md-sys-color-on-primary-container: #041E49;
+  --md-sys-color-primary-container: #E8F0FE;
+  --md-sys-color-on-primary-container: #174EA6;
   
-  --md-sys-color-error: #B3261E; /* Google Red */
-  --md-sys-color-error-container: #F9DEDC;
-  --md-sys-color-on-error-container: #410E0B;
+  --md-sys-color-error: #D93025; /* Google Red */
+  --md-sys-color-error-container: #FCE8E6;
+  --md-sys-color-on-error-container: #A50E0E;
 
-  --md-sys-color-tertiary: #146C2E; /* Google Green */
-  --md-sys-color-tertiary-container: #C4EED0;
-  --md-sys-color-on-tertiary-container: #072711;
+  --md-sys-color-tertiary: #188038; /* Google Green */
+  --md-sys-color-tertiary-container: #E6F4EA;
+  --md-sys-color-on-tertiary-container: #137333;
 
-  --md-sys-color-warning: #B36B00; /* Google Yellow/Orange */
-  --md-sys-color-warning-container: #FFDF99;
-  --md-sys-color-on-warning-container: #3D2300;
+  --md-sys-color-warning: #E37400; /* Google Orange/Yellow */
+  --md-sys-color-warning-container: #FEF7E0;
+  --md-sys-color-on-warning-container: #B06000;
 
-  --md-elevation-1: 0px 1px 2px 0px rgba(0, 0, 0, 0.3), 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
-  --md-elevation-2: 0px 1px 2px 0px rgba(0, 0, 0, 0.3), 0px 2px 6px 2px rgba(0, 0, 0, 0.15);
-  --md-elevation-3: 0px 4px 8px 3px rgba(0, 0, 0, 0.15), 0px 1px 3px 0px rgba(0, 0, 0, 0.3);
+  --md-elevation-1: 0px 1px 2px 0px rgba(60,64,67,0.3), 0px 1px 3px 1px rgba(60,64,67,0.15);
+  --md-elevation-2: 0px 1px 3px 0px rgba(60,64,67,0.3), 0px 4px 8px 3px rgba(60,64,67,0.15);
+  --md-elevation-3: 0px 4px 16px 0px rgba(60,64,67,0.15), 0px 1px 3px 0px rgba(60,64,67,0.3);
+}
+
+.dark {
+  /* Material 3 Colors - Dark Mode */
+  --md-sys-color-background: #121212;
+  --md-sys-color-on-background: #E8EAED;
+  --md-sys-color-surface: #202124;
+  --md-sys-color-surface-variant: #303134;
+  --md-sys-color-on-surface: #E8EAED;
+  --md-sys-color-on-surface-variant: #9AA0A6;
+  
+  --md-sys-color-primary: #8AB4F8; /* Google Light Blue */
+  --md-sys-color-on-primary: #202124;
+  --md-sys-color-primary-container: #174EA6;
+  --md-sys-color-on-primary-container: #D2E3FC;
+  
+  --md-sys-color-error: #F28B82;
+  --md-sys-color-error-container: #C5221F;
+  --md-sys-color-on-error-container: #FCE8E6;
+
+  --md-sys-color-tertiary: #81C995;
+  --md-sys-color-tertiary-container: #137333;
+  --md-sys-color-on-tertiary-container: #E6F4EA;
+
+  --md-sys-color-warning: #FDD663;
+  --md-sys-color-warning-container: #B06000;
+  --md-sys-color-on-warning-container: #FEF7E0;
+
+  --md-elevation-1: 0px 1px 2px 0px rgba(0,0,0,0.5), 0px 1px 3px 1px rgba(0,0,0,0.3);
+  --md-elevation-2: 0px 1px 3px 0px rgba(0,0,0,0.5), 0px 4px 8px 3px rgba(0,0,0,0.3);
+  --md-elevation-3: 0px 4px 16px 0px rgba(0,0,0,0.4), 0px 1px 3px 0px rgba(0,0,0,0.5);
 }
 
 body {
@@ -39,6 +70,7 @@ body {
   background-color: var(--md-sys-color-background);
   color: var(--md-sys-color-on-background);
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 h1, h2, h3, .google-sans {
@@ -47,62 +79,63 @@ h1, h2, h3, .google-sans {
 
 /* ─── Navbar ────────────────────────────────────────────────────────────────── */
 .navbar {
-  @apply sticky top-0 z-30 flex items-center justify-between px-6 py-4;
+  @apply sticky top-0 z-30 flex items-center justify-between px-6 py-3 transition-colors;
   background-color: var(--md-sys-color-surface);
   box-shadow: var(--md-elevation-1);
 }
 
 /* ─── Material Cards ────────────────────────────────────────────────────────── */
 .mat-card {
-  @apply flex flex-col p-6;
+  @apply flex border border-[var(--md-sys-color-surface-variant)] transition-all duration-200;
   background-color: var(--md-sys-color-surface);
-  border-radius: 24px;
-  box-shadow: var(--md-elevation-1);
-  transition: box-shadow 0.2s cubic-bezier(0.2, 0, 0, 1), transform 0.2s cubic-bezier(0.2, 0, 0, 1);
-  position: relative;
-  overflow: hidden;
+  border-radius: 20px;
 }
 .mat-card:hover {
-  box-shadow: var(--md-elevation-3);
-  transform: translateY(-2px);
+  border-color: var(--md-sys-color-primary);
+  box-shadow: var(--md-elevation-2);
 }
 
 /* ─── Material Buttons (M3) ─────────────────────────────────────────────────── */
 .btn-primary {
-  @apply py-3 px-6 rounded-full text-sm font-medium flex items-center justify-center gap-2 transition-all relative overflow-hidden;
+  @apply font-medium flex items-center justify-center gap-2 transition-all relative overflow-hidden;
   background-color: var(--md-sys-color-primary-container);
   color: var(--md-sys-color-on-primary-container);
 }
 .btn-primary:hover {
-  background-color: #c2d7fb; /* Slightly darker container */
+  filter: brightness(0.95);
 }
 .btn-primary:active {
-  background-color: #b1cbf8;
+  transform: scale(0.98);
 }
 
 .btn-danger {
-  @apply py-3 px-6 rounded-full text-sm font-medium flex items-center justify-center gap-2 transition-all relative overflow-hidden;
+  @apply font-medium flex items-center justify-center gap-2 transition-all relative overflow-hidden;
   background-color: var(--md-sys-color-error-container);
   color: var(--md-sys-color-on-error-container);
 }
 .btn-danger:hover {
-  background-color: #f5d1ce;
+  filter: brightness(0.95);
+}
+.btn-danger:active {
+  transform: scale(0.98);
 }
 
 .btn-ghost {
-  @apply py-3 px-6 rounded-full text-sm font-medium flex items-center justify-center gap-2 transition-all;
+  @apply font-medium flex items-center justify-center gap-2 transition-all;
   background-color: transparent;
   color: var(--md-sys-color-primary);
   border: 1px solid var(--md-sys-color-surface-variant);
 }
 .btn-ghost:hover {
   background-color: var(--md-sys-color-surface-variant);
-  border-color: transparent;
+}
+.btn-ghost:active {
+  transform: scale(0.98);
 }
 
 /* ─── Status badge ──────────────────────────────────────────────────────────── */
 .status-badge {
-  @apply flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium;
+  @apply flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all;
   font-family: 'Google Sans', sans-serif;
 }
 .status-online {
@@ -120,28 +153,28 @@ h1, h2, h3, .google-sans {
 
 /* ─── Icons ─────────────────────────────────────────────────────────────────── */
 .material-symbols-outlined {
-  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  font-variation-settings: 'FILL' 0, 'wght' 450, 'GRAD' 0, 'opsz' 20;
   user-select: none;
 }
 .icon-filled {
-  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  font-variation-settings: 'FILL' 1, 'wght' 450, 'GRAD' 0, 'opsz' 20;
 }
 
 /* ─── Animations ────────────────────────────────────────────────────────────── */
 @keyframes fade-in-up {
-  from { opacity: 0; transform: translateY(10px); }
+  from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 .animate-fade-in {
-  animation: fade-in-up 0.4s cubic-bezier(0.2, 0, 0, 1) forwards;
+  animation: fade-in-up 0.3s cubic-bezier(0.2, 0, 0, 1) forwards;
 }
 
 /* ─── Custom scrollbar ──────────────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: var(--md-sys-color-background); }
 ::-webkit-scrollbar-thumb {
   background: var(--md-sys-color-surface-variant);
-  border-radius: 4px;
+  border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--md-sys-color-on-surface-variant);
