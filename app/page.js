@@ -649,7 +649,7 @@ function NavBar({ serverStatus }) {
       </div>
       <div className={`status-badge ${isOnline === false ? 'status-offline' : isOnline ? 'status-online' : 'status-checking'}`}>
         <span className={`w-2.5 h-2.5 rounded-full ${isOnline === false ? 'bg-red-600' : isOnline ? 'bg-green-600' : 'bg-yellow-600 animate-pulse'}`} />
-        {isOnline === false ? 'Offline' : isOnline ? `Online · ${process.env.NEXT_PUBLIC_SSH_HOST || '192.168.15.109'}` : 'Verificando...'}
+        {isOnline === false ? 'Offline' : isOnline ? `Online · ${serverStatus?.host || 'Servidor'}` : 'Verificando...'}
       </div>
     </nav>
   );
@@ -662,9 +662,14 @@ export default function DashboardPage() {
   const [serverStatus, setServerStatus] = useState(null);
 
   useEffect(() => {
-    apiFetch('/api/status')
-      .then((data) => setServerStatus(data))
-      .catch(() => setServerStatus({ online: false }));
+    const fetchStatus = () => {
+      apiFetch('/api/status')
+        .then((data) => setServerStatus(data))
+        .catch(() => setServerStatus({ online: false }));
+    };
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 15000); // Verifica a cada 15 segundos
+    return () => clearInterval(interval);
   }, []);
 
   return (

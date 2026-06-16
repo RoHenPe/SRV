@@ -7,7 +7,7 @@ export async function GET() {
     return {
       online: result.code === 0,
       output: result.stdout,
-      host: process.env.SSH_HOST || process.env.SSH_HOST_VPN,
+      host: result.host,
     };
   });
 }
