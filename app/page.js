@@ -643,7 +643,7 @@ function NavBar({ serverStatus }) {
           <span className="material-symbols-outlined text-[var(--md-sys-color-on-primary-container)] text-[24px]">dns</span>
         </div>
         <div>
-          <span className="text-xl font-medium google-sans tracking-tight text-[var(--md-sys-color-on-surface)]">ROHENPER</span>
+          <span className="text-xl font-medium google-sans tracking-tight text-[var(--md-sys-color-on-surface)]">PC</span>
           <span className="text-[var(--md-sys-color-on-surface-variant)] text-sm ml-2 font-medium">Dashboard</span>
         </div>
       </div>
