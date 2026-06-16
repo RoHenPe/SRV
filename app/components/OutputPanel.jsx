@@ -7,37 +7,32 @@ export default function OutputPanel({ isOpen, title, output, loading, onClose })
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       {/* Panel */}
-      <div className="relative w-full sm:max-w-2xl bg-gray-950 rounded-t-2xl sm:rounded-2xl shadow-2xl border border-gray-800 animate-modal-in">
+      <div className="relative w-full sm:max-w-2xl bg-[var(--md-sys-color-surface)] rounded-t-[28px] sm:rounded-[28px] shadow-[var(--md-elevation-3)] flex flex-col max-h-[85vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
-          <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-red-500"></span>
-            <span className="w-3 h-3 rounded-full bg-yellow-500"></span>
-            <span className="w-3 h-3 rounded-full bg-green-500"></span>
-            <span className="ml-2 text-gray-400 text-sm font-mono">{title || 'terminal'}</span>
-          </div>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+          <span className="text-sm font-mono text-[var(--md-sys-color-on-surface-variant)]">{title || 'terminal'}</span>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-300 transition-colors"
+            className="w-10 h-10 rounded-full hover:bg-black/5 flex items-center justify-center transition-colors text-[var(--md-sys-color-on-surface-variant)]"
           >
             <span className="material-symbols-outlined text-xl">close</span>
           </button>
         </div>
         {/* Content */}
-        <div className="p-4 font-mono text-sm text-green-400 max-h-80 overflow-y-auto whitespace-pre-wrap">
+        <div className="p-6 font-mono text-sm text-gray-800 bg-[#F8F9FA] rounded-b-[28px] flex-1 overflow-y-auto whitespace-pre-wrap">
           {loading ? (
-            <div className="flex items-center gap-2 text-yellow-400">
+            <div className="flex items-center gap-2 text-[var(--md-sys-color-primary)] font-medium">
               <span className="animate-spin material-symbols-outlined text-base">autorenew</span>
-              Executando comando...
+              Processando...
             </div>
           ) : output ? (
             output
           ) : (
-            <span className="text-gray-600">Sem saída.</span>
+            <span className="text-gray-500">Sem saída.</span>
           )}
         </div>
       </div>

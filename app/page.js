@@ -18,7 +18,7 @@ async function apiFetch(url, options = {}) {
 function Card({ children, className = '', span = 1 }) {
   const spanClass = span === 2 ? 'md:col-span-2' : '';
   return (
-    <div className={`card ${spanClass} ${className}`}>
+    <div className={`mat-card ${spanClass} ${className}`}>
       {children}
     </div>
   );
@@ -26,19 +26,19 @@ function Card({ children, className = '', span = 1 }) {
 
 function CardHeader({ icon, title, color = 'blue' }) {
   const colors = {
-    blue: 'text-blue-400 bg-blue-500/10',
-    red: 'text-red-400 bg-red-500/10',
-    purple: 'text-purple-400 bg-purple-500/10',
-    green: 'text-green-400 bg-green-500/10',
-    orange: 'text-orange-400 bg-orange-500/10',
-    cyan: 'text-cyan-400 bg-cyan-500/10',
+    blue: 'text-[var(--md-sys-color-primary)] bg-[var(--md-sys-color-primary-container)]',
+    red: 'text-[var(--md-sys-color-error)] bg-[var(--md-sys-color-error-container)]',
+    purple: 'text-[#6750A4] bg-[#EADDFF]', // Material Purple
+    green: 'text-[var(--md-sys-color-tertiary)] bg-[var(--md-sys-color-tertiary-container)]',
+    orange: 'text-[var(--md-sys-color-warning)] bg-[var(--md-sys-color-warning-container)]',
+    cyan: 'text-[#006874] bg-[#97F0FF]', // Material Cyan
   };
   return (
     <div className="flex flex-col items-center text-center mb-5">
-      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-3 ${colors[color]}`}>
-        <span className={`material-symbols-outlined text-3xl ${colors[color].split(' ')[0]}`}>{icon}</span>
+      <div className={`w-14 h-14 rounded-full flex items-center justify-center mb-3 ${colors[color]}`}>
+        <span className={`material-symbols-outlined text-3xl icon-filled`}>{icon}</span>
       </div>
-      <h2 className="text-base font-semibold text-gray-100">{title}</h2>
+      <h2 className="text-[17px] font-medium tracking-tight google-sans">{title}</h2>
     </div>
   );
 }
@@ -53,12 +53,12 @@ function ActionButton({ label, icon, onClick, variant = 'primary', loading = fal
     <button
       onClick={onClick}
       disabled={disabled || loading}
-      className={`${variants[variant]} flex items-center justify-center gap-2 flex-1 min-w-0`}
+      className={`${variants[variant]} flex items-center justify-center gap-2 flex-1 min-w-0 disabled:opacity-50 disabled:cursor-not-allowed`}
     >
       {loading ? (
-        <span className="material-symbols-outlined text-base animate-spin">autorenew</span>
+        <span className="material-symbols-outlined text-[18px] animate-spin">autorenew</span>
       ) : (
-        <span className="material-symbols-outlined text-base">{icon}</span>
+        <span className="material-symbols-outlined text-[18px]">{icon}</span>
       )}
       <span className="truncate">{label}</span>
     </button>
@@ -73,22 +73,20 @@ function Toast({ toasts, removeToast }) {
       {toasts.map((t) => (
         <div
           key={t.id}
-          className={`flex items-start gap-3 p-3 rounded-xl shadow-lg border text-sm animate-slide-in ${
+          className={`flex items-start gap-3 p-4 rounded-2xl shadow-lg animate-fade-in ${
             t.type === 'error'
-              ? 'bg-red-950 border-red-700 text-red-200'
+              ? 'bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)]'
               : t.type === 'success'
-              ? 'bg-green-950 border-green-700 text-green-200'
-              : 'bg-gray-800 border-gray-700 text-gray-200'
+              ? 'bg-[var(--md-sys-color-tertiary-container)] text-[var(--md-sys-color-on-tertiary-container)]'
+              : 'bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)]'
           }`}
         >
-          <span className={`material-symbols-outlined text-base flex-shrink-0 mt-0.5 ${
-            t.type === 'error' ? 'text-red-400' : t.type === 'success' ? 'text-green-400' : 'text-blue-400'
-          }`}>
+          <span className="material-symbols-outlined icon-filled text-[20px] flex-shrink-0 mt-0.5">
             {t.type === 'error' ? 'error' : t.type === 'success' ? 'check_circle' : 'info'}
           </span>
-          <span className="flex-1">{t.message}</span>
-          <button onClick={() => removeToast(t.id)} className="opacity-50 hover:opacity-100">
-            <span className="material-symbols-outlined text-sm">close</span>
+          <span className="flex-1 font-medium">{t.message}</span>
+          <button onClick={() => removeToast(t.id)} className="opacity-70 hover:opacity-100 transition-opacity">
+            <span className="material-symbols-outlined text-[20px]">close</span>
           </button>
         </div>
       ))}
@@ -250,20 +248,20 @@ function DockerCard({ addToast }) {
       {/* Modal: Parar container */}
       {stopModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setStopModal(false)} />
-          <div className="relative bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-sm">
-            <h3 className="font-bold text-gray-100 mb-3">Parar Container</h3>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setStopModal(false)} />
+          <div className="relative bg-[var(--md-sys-color-surface)] shadow-[var(--md-elevation-3)] rounded-[28px] p-6 w-full max-w-sm animate-fade-in">
+            <h3 className="text-xl font-medium google-sans mb-4 text-[var(--md-sys-color-on-surface)]">Parar Container</h3>
             <input
-              className="w-full bg-gray-800 border border-gray-600 rounded-xl px-3 py-2 text-gray-100 text-sm outline-none focus:border-blue-500 mb-4"
-              placeholder="Nome ou ID do container"
+              className="w-full bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-t-xl border-b-2 border-[var(--md-sys-color-on-surface-variant)] px-4 py-3 text-base outline-none focus:border-[var(--md-sys-color-primary)] transition-colors mb-6"
+              placeholder="Nome ou ID"
               value={containerName}
               onChange={(e) => setContainerName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && stopContainer()}
               autoFocus
             />
-            <div className="flex gap-3">
-              <button onClick={() => setStopModal(false)} className="flex-1 btn-ghost">Cancelar</button>
-              <button onClick={stopContainer} className="flex-1 btn-danger">Parar</button>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setStopModal(false)} className="px-4 py-2 text-sm font-medium text-[var(--md-sys-color-primary)] hover:bg-black/5 rounded-full transition-colors">Cancelar</button>
+              <button onClick={stopContainer} className="px-4 py-2 text-sm font-medium bg-[var(--md-sys-color-primary)] text-white hover:opacity-90 rounded-full transition-colors">Parar</button>
             </div>
           </div>
         </div>
@@ -271,49 +269,46 @@ function DockerCard({ addToast }) {
 
       {/* Painel de saída */}
       {panel && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setPanel(false)} />
-          <div className="relative w-full sm:max-w-3xl bg-gray-950 rounded-t-2xl sm:rounded-2xl shadow-2xl border border-gray-800">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-red-500" />
-                <span className="w-3 h-3 rounded-full bg-yellow-500" />
-                <span className="w-3 h-3 rounded-full bg-green-500" />
-                <span className="ml-2 text-gray-400 text-sm font-mono">{panelTitle}</span>
-              </div>
-              <button onClick={() => setPanel(false)} className="text-gray-500 hover:text-gray-300">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setPanel(false)} />
+          <div className="relative w-full sm:max-w-3xl bg-[var(--md-sys-color-surface)] rounded-t-[28px] sm:rounded-[28px] shadow-[var(--md-elevation-3)] flex flex-col max-h-[85vh]">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <span className="text-sm font-mono text-[var(--md-sys-color-on-surface-variant)]">{panelTitle}</span>
+              <button onClick={() => setPanel(false)} className="w-10 h-10 rounded-full hover:bg-black/5 flex items-center justify-center transition-colors text-[var(--md-sys-color-on-surface-variant)]">
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            <div className="p-4 max-h-96 overflow-y-auto">
+            <div className="p-6 overflow-y-auto bg-[#F8F9FA] rounded-b-[28px] flex-1">
               {loading ? (
-                <div className="flex items-center gap-2 text-yellow-400 font-mono text-sm">
-                  <span className="animate-spin material-symbols-outlined text-base">autorenew</span>
-                  Carregando...
+                <div className="flex items-center gap-2 text-[var(--md-sys-color-primary)] font-medium text-sm">
+                  <span className="animate-spin material-symbols-outlined text-[18px]">autorenew</span>
+                  Processando...
                 </div>
               ) : containers.length > 0 ? (
-                <table className="w-full text-xs font-mono">
-                  <thead>
-                    <tr className="text-gray-500 border-b border-gray-800">
-                      <th className="text-left pb-2">Nome</th>
-                      <th className="text-left pb-2">Status</th>
-                      <th className="text-left pb-2 hidden sm:table-cell">Portas</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {containers.map((c, i) => (
-                      <tr key={i} className="border-b border-gray-900 text-gray-300">
-                        <td className="py-1.5 text-green-400">{c.Names}</td>
-                        <td className={`py-1.5 ${c.Status?.includes('Up') ? 'text-green-400' : 'text-red-400'}`}>
-                          {c.Status}
-                        </td>
-                        <td className="py-1.5 hidden sm:table-cell text-gray-500">{c.Ports || '—'}</td>
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200 text-gray-500">
+                        <th className="text-left py-3 px-4 font-medium">Nome</th>
+                        <th className="text-left py-3 px-4 font-medium">Status</th>
+                        <th className="text-left py-3 px-4 font-medium hidden sm:table-cell">Portas</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {containers.map((c, i) => (
+                        <tr key={i} className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors">
+                          <td className="py-3 px-4 font-mono text-gray-900">{c.Names}</td>
+                          <td className={`py-3 px-4 font-medium ${c.Status?.includes('Up') ? 'text-green-600' : 'text-red-600'}`}>
+                            {c.Status}
+                          </td>
+                          <td className="py-3 px-4 hidden sm:table-cell text-gray-500 font-mono text-xs">{c.Ports || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               ) : (
-                <pre className="text-green-400 text-sm whitespace-pre-wrap">{output || 'Sem dados.'}</pre>
+                <pre className="text-gray-800 font-mono text-sm whitespace-pre-wrap">{output || 'Sem dados.'}</pre>
               )}
             </div>
           </div>
@@ -415,21 +410,21 @@ function IaHubCard({ addToast }) {
       {/* Modal pull */}
       {pullModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setPullModal(false)} />
-          <div className="relative bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-sm">
-            <h3 className="font-bold text-gray-100 mb-3">Pull de Modelo Ollama</h3>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setPullModal(false)} />
+          <div className="relative bg-[var(--md-sys-color-surface)] shadow-[var(--md-elevation-3)] rounded-[28px] p-6 w-full max-w-sm animate-fade-in">
+            <h3 className="text-xl font-medium google-sans mb-4 text-[var(--md-sys-color-on-surface)]">Pull de Modelo Ollama</h3>
             <input
-              className="w-full bg-gray-800 border border-gray-600 rounded-xl px-3 py-2 text-gray-100 text-sm outline-none focus:border-purple-500 mb-1"
+              className="w-full bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-t-xl border-b-2 border-[var(--md-sys-color-on-surface-variant)] px-4 py-3 text-base outline-none focus:border-[var(--md-sys-color-primary)] transition-colors mb-2"
               placeholder="ex: llama3, mistral, gemma2"
               value={modelName}
               onChange={(e) => setModelName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && pullModel()}
               autoFocus
             />
-            <p className="text-gray-500 text-xs mb-4">Este processo pode demorar vários minutos.</p>
-            <div className="flex gap-3">
-              <button onClick={() => setPullModal(false)} className="flex-1 btn-ghost">Cancelar</button>
-              <button onClick={pullModel} className="flex-1 btn-primary">Baixar</button>
+            <p className="text-[var(--md-sys-color-on-surface-variant)] text-xs mb-6 px-1">Este processo pode demorar vários minutos e exige paciência.</p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setPullModal(false)} className="px-4 py-2 text-sm font-medium text-[var(--md-sys-color-primary)] hover:bg-black/5 rounded-full transition-colors">Cancelar</button>
+              <button onClick={pullModel} className="px-4 py-2 text-sm font-medium bg-[var(--md-sys-color-primary)] text-white hover:opacity-90 rounded-full transition-colors">Baixar</button>
             </div>
           </div>
         </div>
@@ -643,17 +638,17 @@ function NavBar({ serverStatus }) {
 
   return (
     <nav className="navbar">
-      <div className="flex items-center gap-3">
-        <div className="w-9 h-9 rounded-xl bg-blue-500 flex items-center justify-center">
-          <span className="material-symbols-outlined text-white text-xl">dns</span>
+      <div className="flex items-center gap-4">
+        <div className="w-12 h-12 rounded-full bg-[var(--md-sys-color-primary-container)] flex items-center justify-center">
+          <span className="material-symbols-outlined text-[var(--md-sys-color-on-primary-container)] text-[24px]">dns</span>
         </div>
         <div>
-          <span className="text-lg font-bold text-white tracking-tight">ROHENPER</span>
-          <span className="text-gray-500 text-xs ml-2">Dashboard</span>
+          <span className="text-xl font-medium google-sans tracking-tight text-[var(--md-sys-color-on-surface)]">ROHENPER</span>
+          <span className="text-[var(--md-sys-color-on-surface-variant)] text-sm ml-2 font-medium">Dashboard</span>
         </div>
       </div>
       <div className={`status-badge ${isOnline === false ? 'status-offline' : isOnline ? 'status-online' : 'status-checking'}`}>
-        <span className={`w-2 h-2 rounded-full ${isOnline === false ? 'bg-red-400' : isOnline ? 'bg-green-400 animate-pulse' : 'bg-yellow-400 animate-pulse'}`} />
+        <span className={`w-2.5 h-2.5 rounded-full ${isOnline === false ? 'bg-red-600' : isOnline ? 'bg-green-600' : 'bg-yellow-600 animate-pulse'}`} />
         {isOnline === false ? 'Offline' : isOnline ? `Online · ${process.env.NEXT_PUBLIC_SSH_HOST || '192.168.15.109'}` : 'Verificando...'}
       </div>
     </nav>
@@ -673,10 +668,10 @@ export default function DashboardPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100">
+    <div className="min-h-screen bg-[var(--md-sys-color-background)]">
       <NavBar serverStatus={serverStatus} />
 
-      <main className="max-w-5xl mx-auto px-4 py-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+      <main className="max-w-6xl mx-auto px-6 py-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
         <PowerCard addToast={addToast} />
         <DockerCard addToast={addToast} />
         <SandboxCard addToast={addToast} />
