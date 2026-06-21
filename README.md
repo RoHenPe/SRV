@@ -56,16 +56,37 @@ Acesse: `http://localhost:3000`
 
 ## Deploy na Vercel
 
-### Variáveis de ambiente na Vercel
+### 1. Preparar variáveis de ambiente
 
 No painel da Vercel, em **Settings → Environment Variables**, adicione:
 
-- `SSH_HOST`
-- `SSH_HOST_VPN`
-- `SSH_USER`
-- `SSH_PRIVATE_KEY_B64`
+- `API_KEY` — Uma string aleatória e segura para autenticação (ex: `openssl rand -base64 32`)
+- `SSH_HOST` — IP do servidor (LAN ou VPN)
+- `SSH_HOST_VPN` — IP de fallback (opcional)
+- `SSH_USER` — Usuário SSH
+- `SSH_PRIVATE_KEY_B64` — Chave SSH em Base64
+- `LOG_LEVEL` — (opcional, padrão: `info`)
+- `RATE_LIMIT_ENABLED` — (opcional, padrão: `true`)
 
-> ⚠️ **Importante:** O servidor remoto deve aceitar conexões SSH pela internet (porta 22 aberta ou via VPN Tailscale).
+### 2. Autenticação no Dashboard
+
+Após fazer deploy, acesse a URL e você será redirecionado para `/login`.
+
+**Faça login com a API_KEY que você configurou nas variáveis de ambiente.**
+
+> 🔐 Cada acesso é auditado e logging de todas as ações é feito automaticamente.
+
+### 3. Segurança
+
+- ✅ Todas as rotas requerem Bearer token (API_KEY)
+- ✅ Rate limiting: 10 requisições por minuto por IP
+- ✅ Audit logging: `/tmp/dashboard-audit.log`
+- ✅ Autenticação validada em cada requisição
+
+> ⚠️ **Importante:** 
+> - Nunca compartilhe sua API_KEY
+> - Use uma API_KEY única para cada ambiente
+> - O servidor remoto deve aceitar conexões SSH pela internet (porta 22 aberta ou via VPN Tailscale).
 
 ## Estrutura do Projeto
 

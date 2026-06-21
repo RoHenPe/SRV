@@ -1,0 +1,8 @@
+version: '3.8'
+
+services:
+  rohenper-dashboard:
+    build: .
+    container_name: rohenper_dashboard
+    network_mode: host
+    restart: unless-stopped

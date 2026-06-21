@@ -27,10 +27,25 @@ function parseUptime(output) {
 }
 
 async function apiFetch(url, options = {}) {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('dashboard-token') : null;
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token && { 'Authorization': `Bearer ${token}` }),
+    ...options.headers,
+  };
+
   const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
     ...options,
+    headers,
   });
+
+  if (res.status === 401) {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('dashboard-token');
+      window.location.href = '/login';
+    }
+  }
+
   return res.json();
 }
 
@@ -791,11 +806,52 @@ function ControlBar({ theme, setTheme, density, setDensity, view, setView }) {
 export default function DashboardPage() {
   const { toasts, addToast, removeToast } = useToast();
   const [serverStatus, setServerStatus] = useState(null);
-  
+
   const [theme, setTheme] = useState('light');
   const [density, setDensity] = useState('normal');
   const [view, setView] = useState('grid');
   const [mounted, setMounted] = useState(false);
+  const [authValid, setAuthValid] = useState(false);
+
+  useEffect(() => {
+    const validateAuth = async () => {
+      const token = localStorage.getItem('dashboard-token');
+      if (!token) {
+        window.location.href = '/login';
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/auth/validate', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (res.status === 401) {
+          localStorage.removeItem('dashboard-token');
+          window.location.href = '/login';
+          return;
+        }
+
+        const data = await res.json();
+        if (data.ok) {
+          setAuthValid(true);
+        } else {
+          localStorage.removeItem('dashboard-token');
+          window.location.href = '/login';
+        }
+      } catch (err) {
+        console.error('Auth validation failed:', err);
+        localStorage.removeItem('dashboard-token');
+        window.location.href = '/login';
+      }
+    };
+
+    validateAuth();
+  }, []);
 
   useEffect(() => {
     setMounted(true);
@@ -842,30 +898,45 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-[var(--md-sys-color-background)] transition-colors">
-      <NavBar serverStatus={serverStatus} />
-      
-      <ControlBar 
-        theme={theme} setTheme={setTheme} 
-        density={density} setDensity={setDensity} 
-        view={view} setView={setView} 
-      />
+      {!authValid ? (
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="flex flex-col items-center gap-3">
+            <span className="material-symbols-outlined animate-spin text-4xl text-[var(--md-sys-color-primary)]">
+              autorenew
+            </span>
+            <span className="text-sm text-[var(--md-sys-color-on-surface-variant)]">
+              Validando acesso...
+            </span>
+          </div>
+        </div>
+      ) : (
+        <>
+          <NavBar serverStatus={serverStatus} />
 
-      <main className={`max-w-6xl mx-auto px-4 py-4 animate-fade-in ${
-        view === 'list' 
-          ? 'flex flex-col gap-3' 
-          : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'
-      }`}>
-        <PowerCard addToast={addToast} view={view} density={density} />
-        <DockerCard addToast={addToast} view={view} density={density} />
-        <SandboxCard addToast={addToast} view={view} density={density} />
-        <IaHubCard addToast={addToast} view={view} density={density} />
-        <BackupCard addToast={addToast} view={view} density={density} />
-        <VpnCard addToast={addToast} view={view} density={density} />
-        <QuickLinksCard view={view} density={density} />
-        <MaintenanceCard addToast={addToast} view={view} density={density} />
-      </main>
+          <ControlBar
+            theme={theme} setTheme={setTheme}
+            density={density} setDensity={setDensity}
+            view={view} setView={setView}
+          />
 
-      <Toast toasts={toasts} removeToast={removeToast} />
+          <main className={`max-w-6xl mx-auto px-4 py-4 animate-fade-in ${
+            view === 'list'
+              ? 'flex flex-col gap-3'
+              : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'
+          }`}>
+            <PowerCard addToast={addToast} view={view} density={density} />
+            <DockerCard addToast={addToast} view={view} density={density} />
+            <SandboxCard addToast={addToast} view={view} density={density} />
+            <IaHubCard addToast={addToast} view={view} density={density} />
+            <BackupCard addToast={addToast} view={view} density={density} />
+            <VpnCard addToast={addToast} view={view} density={density} />
+            <QuickLinksCard view={view} density={density} />
+            <MaintenanceCard addToast={addToast} view={view} density={density} />
+          </main>
+
+          <Toast toasts={toasts} removeToast={removeToast} />
+        </>
+      )}
     </div>
   );
 }
