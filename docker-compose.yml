@@ -6,3 +6,5 @@ services:
     container_name: rohenper_dashboard
     network_mode: host
     restart: unless-stopped
+    volumes:
+      - ./data:/app/data

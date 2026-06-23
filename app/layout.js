@@ -4,9 +4,9 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata = {
-  title: 'ROHENPER — Server Dashboard',
-  description: 'Dashboard de gerenciamento do servidor remoto ROHENPER. Controle energia, Docker, backups, IA Hub e mais.',
-  keywords: 'servidor, dashboard, docker, ollama, backup, SSH',
+  title: 'Painel',
+  description: 'Painel de controle do servidor.',
+  keywords: 'servidor, dashboard, docker, ollama',
 };
 
 export default function RootLayout({ children }) {
