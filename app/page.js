@@ -235,16 +235,20 @@ export default function DashboardPage() {
     setActiveApp(app);
     setIframeUrl('');
     setMobileMenuOpen(false);
+    
     const isIPOrLocalhost = (h) => {
       if (h === 'localhost' || h === '127.0.0.1') return true;
       return /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(h) || h.endsWith('.local');
     };
-    const host = isIPOrLocalhost(window.location.hostname) 
-      ? window.location.hostname 
-      : (serverStatus?.host || window.location.hostname);
+    
+    const isLocal = isIPOrLocalhost(window.location.hostname);
+    // Always use the server's IP (from serverStatus or default) for targetHost, 
+    // because the container runs on the server, not necessarily on the UI host.
+    const targetHost = serverStatus?.host || '192.168.15.109';
+      
     const protocol = app.protocol || 'http:';
     const path = app.path || '';
-    const targetUrl = `${protocol}//${host}:${app.port}${path}`;
+    const targetUrl = `${protocol}//${targetHost}:${app.port}${path}`;
 
     // Helper checking if a container name is running
     const isContainerRunning = (name) => {

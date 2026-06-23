@@ -1,5 +1,4 @@
 import { runSSH, getTargetHost, apiHandler } from '@/lib/ssh';
-import { startNgrok } from '@/lib/ngrok';
 
 // POST /api/sandbox/kdenlive — inicia Kdenlive container e retorna URL
 export async function POST(request) {
@@ -17,11 +16,10 @@ export async function POST(request) {
         "lscr.io/linuxserver/kdenlive:latest"
       );
       const host = getTargetHost();
-      const ngrokUrl = await startNgrok(3005);
       return {
         ok: true,
         message: 'Kdenlive iniciado com sucesso!',
-        url: ngrokUrl ? ngrokUrl + "" : `http://${host}:3005`,
+        url: `http://${host}:3005`,
       };
     },
     request,
