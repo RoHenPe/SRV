@@ -258,7 +258,6 @@ export default function DashboardPage() {
       );
     };
 
-    const isLocal = isIPOrLocalhost(window.location.hostname);
     const resolveUrl = async () => {
       if (!isLocal) {
         setLaunchMessage(`Iniciando túnel seguro para ${app.name}...`);
