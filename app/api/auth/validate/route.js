@@ -11,7 +11,7 @@ export async function POST(request) {
     }
 
     if (body.username && body.password) {
-      const users = getUsers();
+      const users = await getUsers();
       const user = users.find(u => u.username === body.username && u.password === body.password);
       
       if (!user) {
@@ -38,7 +38,7 @@ export async function POST(request) {
       );
     }
 
-    validateToken(token);
+    await validateToken(token);
 
     return Response.json({
       ok: true,

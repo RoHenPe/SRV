@@ -254,6 +254,20 @@ export default function DashboardPage() {
       );
     };
 
+    const isLocal = isIPOrLocalhost(window.location.hostname);
+    const resolveUrl = async () => {
+      if (!isLocal) {
+        setLaunchMessage(`Iniciando túnel seguro para ${app.name}...`);
+        try {
+          const tunRes = await apiFetch('/api/tunnel', { method: 'POST', body: JSON.stringify({ port: app.port, protocol: app.protocol || 'http:' }) });
+          if (tunRes.ok && tunRes.url) {
+            return tunRes.url + path;
+          }
+        } catch (e) {}
+      }
+      return targetUrl;
+    };
+
     // If it's a sandbox, start/check it
     if (app.type === 'sandbox') {
       // Map app id to container name
@@ -261,7 +275,10 @@ export default function DashboardPage() {
       if (app.id === 'filebrowser') containerName = 'srv_filebrowser';
 
       if (isContainerRunning(containerName)) {
-        setIframeUrl(targetUrl);
+        setLaunching(true);
+        const finalUrl = await resolveUrl();
+        setIframeUrl(finalUrl);
+        setLaunching(false);
         return;
       }
 
@@ -272,8 +289,9 @@ export default function DashboardPage() {
         if (res.ok) {
           addToast(`${app.name} iniciado!`, 'success');
           // Wait 5 seconds for initialization
-          setTimeout(() => {
-            setIframeUrl(targetUrl);
+          setTimeout(async () => {
+            const finalUrl = await resolveUrl();
+            setIframeUrl(finalUrl);
             setLaunching(false);
             fetchStatus();
           }, 5000);
@@ -300,7 +318,10 @@ export default function DashboardPage() {
       else if (app.id === 'onlyoffice') isRunning = isContainerRunning('srv_onlyoffice');
 
       if (isRunning) {
-        setIframeUrl(targetUrl);
+        setLaunching(true);
+        const finalUrl = await resolveUrl();
+        setIframeUrl(finalUrl);
+        setLaunching(false);
       } else {
         // If not running, prompt user to start service
         if (window.confirm(`O serviço ${app.name} não está ativo. Deseja iniciá-lo agora?`)) {
@@ -313,8 +334,9 @@ export default function DashboardPage() {
             });
             if (res.ok) {
               addToast(`Serviço ${app.name} iniciado!`, 'success');
-              setTimeout(() => {
-                setIframeUrl(targetUrl);
+              setTimeout(async () => {
+                const finalUrl = await resolveUrl();
+                setIframeUrl(finalUrl);
                 setLaunching(false);
                 fetchStatus();
               }, 6000);
@@ -335,7 +357,10 @@ export default function DashboardPage() {
     } 
     // Static app
     else {
-      setIframeUrl(targetUrl);
+      setLaunching(true);
+      const finalUrl = await resolveUrl();
+      setIframeUrl(finalUrl);
+      setLaunching(false);
     }
   };
 
@@ -343,6 +368,13 @@ export default function DashboardPage() {
     setActiveTab('home');
     setActiveApp(null);
     setIframeUrl('');
+    const isIPOrLocalhost = (h) => {
+      if (h === 'localhost' || h === '127.0.0.1') return true;
+      return /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(h) || h.endsWith('.local');
+    };
+    if (!isIPOrLocalhost(window.location.hostname)) {
+      apiFetch('/api/tunnel', { method: 'POST', body: JSON.stringify({ action: 'stop' }) }).catch(()=>{});
+    }
   };
 
   const reloadIframe = () => {
