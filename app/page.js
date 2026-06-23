@@ -480,10 +480,9 @@ export default function DashboardPage() {
                         }`}
                       >
                         <div className="flex items-center gap-2.5 truncate">
-                          <span className={`material-symbols-outlined text-[18px] ${active ? 'text-[var(--md-sys-color-primary)]' : ''}`}>{app.icon}</span>
+                          <span className="material-symbols-outlined text-[18px]">{app.icon}</span>
                           <span className="truncate">{app.name}</span>
                         </div>
-                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${active ? 'bg-[var(--md-sys-color-tertiary)] animate-pulse' : 'bg-transparent'}`} />
                       </button>
                     );
                   })}
@@ -543,6 +542,17 @@ export default function DashboardPage() {
                     {iframeUrl || 'Carregando...'}
                   </span>
                   <div className="flex items-center gap-1">
+                    {iframeUrl && (
+                      <a 
+                        href={iframeUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        title="Abrir em nova aba" 
+                        className="w-7 h-7 rounded-lg hover:bg-black/5 flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)]"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">open_in_new</span>
+                      </a>
+                    )}
                     <button onClick={reloadIframe} title="Recarregar" className="w-7 h-7 rounded-lg hover:bg-black/5 flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)]">
                       <span className="material-symbols-outlined text-[16px]">refresh</span>
                     </button>
@@ -554,9 +564,27 @@ export default function DashboardPage() {
                     </button>
                   </div>
                 </div>
-                <div className="flex-1 bg-[var(--md-sys-color-background)]">
+                <div className="flex-1 bg-[var(--md-sys-color-background)] relative">
                   {iframeUrl ? (
-                    <iframe src={iframeUrl} className="w-full h-full border-0" allow="clipboard-read; clipboard-write; fullscreen" />
+                    <>
+                      <iframe src={iframeUrl} className="w-full h-full border-0" allow="clipboard-read; clipboard-write; fullscreen" />
+                      {typeof window !== 'undefined' && window.location.protocol === 'https:' && (
+                        <div className="absolute bottom-4 left-4 right-4 bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)] border border-[var(--md-sys-color-error)]/20 p-3 rounded-xl text-xs flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg z-10 animate-fade-in">
+                          <span className="font-medium text-left">
+                            ⚠️ Bloqueio de conteúdo misto (HTTPS para HTTP). Se o aplicativo não carregar:
+                          </span>
+                          <a 
+                            href={iframeUrl} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="bg-[var(--md-sys-color-error)] text-white font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 hover:opacity-90 transition-opacity whitespace-nowrap"
+                          >
+                            <span className="material-symbols-outlined text-sm">open_in_new</span>
+                            <span>Abrir em Nova Aba</span>
+                          </a>
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-xs text-[var(--md-sys-color-on-surface-variant)]">
                       Iniciando aplicação...
@@ -642,18 +670,8 @@ function HomeView({ apps, selectApp, serverStatus, addToast, fetchStatus, isRunn
       <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <span className="material-symbols-outlined text-lg text-[var(--md-sys-color-primary)]">dns</span>
-          <span className="text-xs font-medium text-[var(--md-sys-color-on-surface-variant)] truncate flex items-center gap-2">
+          <span className="text-xs font-medium text-[var(--md-sys-color-on-surface-variant)] truncate">
             {serverStatus?.online ? `${serverStatus.host}` : 'Servidor Offline'}
-            <span 
-              title={serverStatus?.online === false ? 'Offline' : serverStatus?.online ? 'Online' : 'Checking'}
-              className={`w-1.5 h-1.5 rounded-full inline-block ${
-                serverStatus?.online === false 
-                  ? 'bg-[var(--md-sys-color-error)]' 
-                  : serverStatus?.online 
-                  ? 'bg-[var(--md-sys-color-tertiary)] animate-pulse' 
-                  : 'bg-[var(--md-sys-color-warning)]'
-              }`}
-            />
           </span>
         </div>
         <div className="flex gap-1.5">
@@ -680,16 +698,9 @@ function HomeView({ apps, selectApp, serverStatus, addToast, fetchStatus, isRunn
               <button
                 key={app.id}
                 onClick={() => selectApp(app)}
-                className={`border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl flex flex-col items-center justify-center text-center transition-all hover:border-[var(--md-sys-color-primary)] relative ${
-                  active ? 'ring-1 ring-[var(--md-sys-color-primary)]' : ''
-                }`}
+                className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl flex flex-col items-center justify-center text-center transition-all hover:border-[var(--md-sys-color-primary)]"
               >
-                <div className={`absolute top-2 right-2 w-1.5 h-1.5 rounded-full ${
-                  active ? 'bg-[var(--md-sys-color-tertiary)] animate-pulse' : 'bg-[var(--md-sys-color-on-surface-variant)]/30'
-                }`} />
-                <span className={`material-symbols-outlined text-2xl mb-1.5 ${
-                  active ? 'text-[var(--md-sys-color-primary)] icon-filled' : 'text-[var(--md-sys-color-on-surface-variant)]'
-                }`}>{app.icon}</span>
+                <span className="material-symbols-outlined text-2xl mb-1.5 text-[var(--md-sys-color-on-surface-variant)]">{app.icon}</span>
                 <span className="text-[11px] font-medium truncate w-full">{app.name}</span>
               </button>
             );
