@@ -211,6 +211,24 @@ export default function DashboardPage() {
     window.location.href = '/login';
   };
 
+  const isRunning = useCallback((app) => {
+    if (!serverStatus?.runningContainers) return false;
+    let containerName = `srv_${app.id}_sandbox`;
+    if (app.id === 'filebrowser') containerName = 'srv_filebrowser';
+    else if (app.id === 'jarvis') containerName = 'open-webui';
+    else if (app.id === 'cups') containerName = 'cupsd';
+    else if (app.id === 'scanner') containerName = 'scanservjs';
+    else if (app.id === 'ttyd') containerName = 'srv_dashboard';
+    else if (app.id === 'metabase') containerName = 'srv_metabase';
+    else if (app.id === 'jupyter') containerName = 'srv_jupyter_spark';
+    else if (app.id === 'onlyoffice') containerName = 'srv_onlyoffice';
+    else if (app.type === 'static') return true;
+
+    return serverStatus.runningContainers.some(c => 
+      c.toLowerCase() === containerName.toLowerCase() || c.toLowerCase().includes(containerName.toLowerCase())
+    );
+  }, [serverStatus]);
+
   // Sandbox/Service Launcher
   const selectApp = async (app) => {
     setActiveTab('app');
@@ -371,11 +389,8 @@ export default function DashboardPage() {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[var(--md-sys-color-background)]">
         <div className="flex flex-col items-center gap-3">
-          <span className="material-symbols-outlined animate-spin text-4xl text-[var(--md-sys-color-primary)]">
+          <span className="material-symbols-outlined animate-spin text-2xl text-[var(--md-sys-color-primary)]">
             autorenew
-          </span>
-          <span className="text-sm text-[var(--md-sys-color-on-surface-variant)]">
-            Validando acesso...
           </span>
         </div>
       </div>
@@ -383,193 +398,235 @@ export default function DashboardPage() {
   }
 
   const isOnline = serverStatus?.online;
-  const systemInfo = isOnline ? parseUptime(serverStatus?.output) : null;
+  const systemInfo = serverStatus?.online ? {
+    uptime: serverStatus.uptime,
+    load: `CPU ${serverStatus.cpu}% | RAM ${serverStatus.memory?.percent}%`,
+  } : null;
 
   return (
-    <div className="flex h-screen bg-[var(--md-sys-color-background)] overflow-hidden text-[var(--md-sys-color-on-background)] relative">
-      {/* ─── SIDEBAR ────────────────────────────────────────────────────────── */}
-      <aside className={`border-r border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex flex-col justify-between flex-shrink-0 z-40 transition-all duration-200 ${
-        mobileMenuOpen ? 'fixed inset-y-0 left-0 w-64' : 'hidden md:flex w-64'
-      }`}>
-        <div className="flex flex-col flex-1 overflow-y-auto">
-          {/* Brand header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--md-sys-color-surface-variant)]">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-[var(--md-sys-color-primary-container)] flex items-center justify-center">
-                <span className="material-symbols-outlined text-[var(--md-sys-color-on-primary-container)] text-lg icon-filled">dns</span>
+    <div className="flex flex-col md:flex-row h-screen bg-[var(--md-sys-color-background)] overflow-hidden text-[var(--md-sys-color-on-background)] relative">
+      <div className="flex flex-1 h-full overflow-hidden relative">
+        {/* ─── SIDEBAR (Desktop) ────────────────────────────────────────────────── */}
+        <aside className={`border-r border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex flex-col justify-between flex-shrink-0 z-40 transition-all duration-200 ${
+          mobileMenuOpen ? 'fixed inset-y-0 left-0 w-64' : 'hidden md:flex w-64'
+        }`}>
+          <div className="flex flex-col flex-1 overflow-y-auto">
+            {/* Brand header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--md-sys-color-surface-variant)]">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-[var(--md-sys-color-primary-container)] flex items-center justify-center">
+                  <span className="material-symbols-outlined text-[var(--md-sys-color-on-primary-container)] text-lg icon-filled">dns</span>
+                </div>
+                <span className="font-bold tracking-tight text-sm google-sans">SRV</span>
               </div>
-              <span className="font-bold tracking-tight text-sm google-sans">Painel</span>
-            </div>
-            <button onClick={() => setMobileMenuOpen(false)} className="md:hidden text-[var(--md-sys-color-on-surface-variant)]">
-              <span className="material-symbols-outlined">close</span>
-            </button>
-          </div>
-
-          {/* Navigation Menu */}
-          <div className="px-3 py-4 space-y-6">
-            <div className="space-y-1">
-              <span className="px-4 text-[10px] font-bold text-[var(--md-sys-color-on-surface-variant)] tracking-wider uppercase block mb-2">Sistema</span>
-              {[
-                { id: 'home', name: 'Resumo', icon: 'home' },
-                { id: 'docker', name: 'Docker', icon: 'view_in_ar' },
-                { id: 'ia', name: 'IA Hub', icon: 'psychology' },
-                { id: 'backup', name: 'Backup & Discos', icon: 'cloud_sync' },
-                { id: 'users', name: 'Usuários', icon: 'group' },
-                { id: 'maintenance', name: 'Manutenção & VPN', icon: 'build' }
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => { setActiveTab(tab.id); setMobileMenuOpen(false); }}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-medium transition-all ${
-                    activeTab === tab.id
-                      ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)]'
-                      : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[18px]">{tab.icon}</span>
-                  <span>{tab.name}</span>
-                </button>
-              ))}
+              <button onClick={() => setMobileMenuOpen(false)} className="md:hidden text-[var(--md-sys-color-on-surface-variant)]">
+                <span className="material-symbols-outlined">close</span>
+              </button>
             </div>
 
-            <div className="space-y-1">
-              <span className="px-4 text-[10px] font-bold text-[var(--md-sys-color-on-surface-variant)] tracking-wider uppercase block mb-2">Aplicações</span>
-              <div className="grid grid-cols-2 gap-1 px-1">
-                {apps.map((app) => (
+            {/* Navigation Menu */}
+            <div className="px-3 py-4 space-y-6">
+              <div className="space-y-1">
+                {[
+                  { id: 'home', name: 'Início', icon: 'home' },
+                  { id: 'docker', name: 'Docker', icon: 'view_in_ar' },
+                  { id: 'ia', name: 'IA', icon: 'psychology' },
+                  { id: 'backup', name: 'Backup', icon: 'cloud_sync' },
+                  { id: 'users', name: 'Contas', icon: 'group' },
+                  { id: 'maintenance', name: 'Ajustes', icon: 'build' }
+                ].map((tab) => (
                   <button
-                    key={app.id}
-                    onClick={() => selectApp(app)}
-                    title={app.name}
-                    className={`flex flex-col items-center justify-center p-2.5 rounded-xl transition-all border ${
-                      activeTab === 'app' && activeApp?.id === app.id
-                        ? 'border-[var(--md-sys-color-primary)] bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)]'
-                        : 'border-transparent text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
+                    key={tab.id}
+                    onClick={() => { setActiveTab(tab.id); setMobileMenuOpen(false); }}
+                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-medium transition-all ${
+                      activeTab === tab.id
+                        ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] font-semibold'
+                        : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
                     }`}
                   >
-                    <span className="material-symbols-outlined text-lg mb-1">{app.icon}</span>
-                    <span className="text-[10px] font-medium truncate w-full text-center">{app.name}</span>
+                    <span className="material-symbols-outlined text-[18px]">{tab.icon}</span>
+                    <span>{tab.name}</span>
                   </button>
                 ))}
               </div>
+
+              <div className="space-y-1">
+                <span className="px-4 text-[10px] font-bold text-[var(--md-sys-color-on-surface-variant)] tracking-wider uppercase block mb-2">Aplicações</span>
+                <div className="space-y-0.5 px-2">
+                  {apps.map((app) => {
+                    const active = isRunning(app);
+                    return (
+                      <button
+                        key={app.id}
+                        onClick={() => selectApp(app)}
+                        title={app.name}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all ${
+                          activeTab === 'app' && activeApp?.id === app.id
+                            ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] font-semibold'
+                            : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]/50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 truncate">
+                          <span className={`material-symbols-outlined text-[18px] ${active ? 'text-[var(--md-sys-color-primary)]' : ''}`}>{app.icon}</span>
+                          <span className="truncate">{app.name}</span>
+                        </div>
+                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${active ? 'bg-[var(--md-sys-color-tertiary)] animate-pulse' : 'bg-transparent'}`} />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Footer controls */}
-        <div className="p-4 border-t border-[var(--md-sys-color-surface-variant)] flex items-center justify-between">
-          <button onClick={toggleTheme} className="w-9 h-9 rounded-xl bg-[var(--md-sys-color-surface-variant)] flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)]">
-            <span className="material-symbols-outlined text-base">
-              {theme === 'dark' ? 'light_mode' : 'dark_mode'}
-            </span>
-          </button>
-
-          <button onClick={handleLogout} className="w-9 h-9 rounded-xl bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)] flex items-center justify-center">
-            <span className="material-symbols-outlined text-base">logout</span>
-          </button>
-        </div>
-      </aside>
-
-      {/* Backdrop overlay for mobile menu */}
-      {mobileMenuOpen && (
-        <div onClick={() => setMobileMenuOpen(false)} className="fixed inset-0 z-30 bg-black/30 md:hidden" />
-      )}
-
-      {/* ─── MAIN WORKSPACE ─── */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top Header */}
-        <header className="h-14 border-b border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] px-6 flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setMobileMenuOpen(true)} className="md:hidden text-[var(--md-sys-color-on-surface-variant)]">
-              <span className="material-symbols-outlined">menu</span>
+          {/* Footer controls */}
+          <div className="p-4 border-t border-[var(--md-sys-color-surface-variant)] flex items-center justify-between">
+            <button onClick={toggleTheme} className="w-9 h-9 rounded-xl bg-[var(--md-sys-color-surface-variant)] flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)]">
+              <span className="material-symbols-outlined text-base">
+                {theme === 'dark' ? 'light_mode' : 'dark_mode'}
+              </span>
             </button>
-            <span className="text-sm font-semibold google-sans capitalize">
-              {activeTab === 'app' ? activeApp?.name : activeTab}
-            </span>
-          </div>
 
-          <div className="flex items-center gap-3">
-            {/* System Info Badges */}
-            {systemInfo && (
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1 bg-[var(--md-sys-color-surface-variant)] px-2.5 py-1 rounded-full text-[10px] font-medium text-[var(--md-sys-color-on-surface-variant)]">
-                  <span className="material-symbols-outlined text-[12px]">schedule</span>
-                  <span>{systemInfo.uptime}</span>
+            <button onClick={handleLogout} className="w-9 h-9 rounded-xl bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)] flex items-center justify-center">
+              <span className="material-symbols-outlined text-base">logout</span>
+            </button>
+          </div>
+        </aside>
+
+        {/* Backdrop overlay for mobile menu */}
+        {mobileMenuOpen && (
+          <div onClick={() => setMobileMenuOpen(false)} className="fixed inset-0 z-30 bg-black/30 md:hidden" />
+        )}
+
+        {/* ─── MAIN WORKSPACE ─── */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Top Header */}
+          <header className={`h-14 border-b border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] px-6 flex items-center justify-between flex-shrink-0 ${
+            activeTab === 'app' ? 'hidden md:flex' : 'flex'
+          }`}>
+            <div className="flex items-center gap-3">
+              <button onClick={() => setMobileMenuOpen(true)} className="md:hidden text-[var(--md-sys-color-on-surface-variant)]">
+                <span className="material-symbols-outlined">menu</span>
+              </button>
+              <span className="text-sm font-semibold google-sans capitalize">
+                {activeTab === 'app' ? activeApp?.name : activeTab}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {/* System Info Badges (hidden on mobile) */}
+              {systemInfo && (
+                <div className="hidden sm:flex items-center gap-2">
+                  <div className="flex items-center gap-1 bg-[var(--md-sys-color-surface-variant)] px-2.5 py-1 rounded-full text-[10px] font-medium text-[var(--md-sys-color-on-surface-variant)]">
+                    <span className="material-symbols-outlined text-[12px]">schedule</span>
+                    <span>{systemInfo.uptime}</span>
+                  </div>
+                  <div className="flex items-center gap-1 bg-[var(--md-sys-color-surface-variant)] px-2.5 py-1 rounded-full text-[10px] font-medium text-[var(--md-sys-color-on-surface-variant)]">
+                    <span className="material-symbols-outlined text-[12px]">analytics</span>
+                    <span>{systemInfo.load}</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1 bg-[var(--md-sys-color-surface-variant)] px-2.5 py-1 rounded-full text-[10px] font-medium text-[var(--md-sys-color-on-surface-variant)]">
-                  <span className="material-symbols-outlined text-[12px]">analytics</span>
-                  <span>{systemInfo.load}</span>
-                </div>
+              )}
+
+              {/* Server Online Status */}
+              <div className={`flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-bold ${
+                isOnline === false 
+                  ? 'bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)]' 
+                  : isOnline 
+                  ? 'bg-[var(--md-sys-color-tertiary-container)] text-[var(--md-sys-color-on-tertiary-container)]' 
+                  : 'bg-[var(--md-sys-color-warning-container)] text-[var(--md-sys-color-on-warning-container)]'
+              }`}>
+                <span className="material-symbols-outlined text-[10px] icon-filled">
+                  {isOnline === false ? 'offline_bolt' : isOnline ? 'cloud_done' : 'sync'}
+                </span>
+                <span className="hidden xs:inline">{isOnline === false ? 'Offline' : isOnline ? 'Online' : 'Checking'}</span>
+              </div>
+            </div>
+          </header>
+
+          {/* Content Pane */}
+          <main className={`flex-1 overflow-y-auto relative ${
+            activeTab === 'app' ? 'p-0' : 'p-4 md:p-6'
+          }`}>
+            {launching && (
+              <div className="absolute inset-0 bg-[var(--md-sys-color-background)]/85 z-30 flex flex-col items-center justify-center gap-3">
+                <span className="material-symbols-outlined animate-spin text-3xl text-[var(--md-sys-color-primary)]">
+                  autorenew
+                </span>
+                <span className="text-xs text-[var(--md-sys-color-on-surface-variant)] font-medium">
+                  {launchMessage}
+                </span>
               </div>
             )}
 
-            {/* Server Online Status */}
-            <div className={`flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-bold ${
-              isOnline === false 
-                ? 'bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)]' 
-                : isOnline 
-                ? 'bg-[var(--md-sys-color-tertiary-container)] text-[var(--md-sys-color-on-tertiary-container)]' 
-                : 'bg-[var(--md-sys-color-warning-container)] text-[var(--md-sys-color-on-warning-container)]'
-            }`}>
-              <span className="material-symbols-outlined text-[10px] icon-filled">
-                {isOnline === false ? 'offline_bolt' : isOnline ? 'cloud_done' : 'sync'}
-              </span>
-              <span>{isOnline === false ? 'Offline' : isOnline ? 'Online' : 'Checking'}</span>
-            </div>
-          </div>
-        </header>
-
-        {/* Content Pane */}
-        <main className="flex-1 overflow-y-auto p-6 relative">
-          {launching && (
-            <div className="absolute inset-0 bg-[var(--md-sys-color-background)]/85 z-30 flex flex-col items-center justify-center gap-3">
-              <span className="material-symbols-outlined animate-spin text-3xl text-[var(--md-sys-color-primary)]">
-                autorenew
-              </span>
-              <span className="text-xs text-[var(--md-sys-color-on-surface-variant)] font-medium">
-                {launchMessage}
-              </span>
-            </div>
-          )}
-
-          {activeTab === 'home' && <HomeView apps={apps} selectApp={selectApp} serverStatus={serverStatus} addToast={addToast} fetchStatus={fetchStatus} />}
-          {activeTab === 'docker' && <DockerView addToast={addToast} />}
-          {activeTab === 'ia' && <IaHubView addToast={addToast} />}
-          {activeTab === 'backup' && <BackupView serverStatus={serverStatus} addToast={addToast} />}
-          {activeTab === 'users' && <UsersView addToast={addToast} />}
-          {activeTab === 'maintenance' && <MaintenanceView serverStatus={serverStatus} addToast={addToast} fetchStatus={fetchStatus} />}
-          
-          {activeTab === 'app' && activeApp && (
-            <div className="w-full h-full flex flex-col bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] rounded-2xl overflow-hidden">
-              {/* App Iframe Controls */}
-              <div className="h-10 px-4 bg-[var(--md-sys-color-surface-variant)] flex items-center justify-between border-b border-[var(--md-sys-color-surface-variant)] flex-shrink-0 text-xs">
-                <span className="font-mono text-[10px] text-[var(--md-sys-color-on-surface-variant)] truncate max-w-md">
-                  {iframeUrl || 'Carregando...'}
-                </span>
-                <div className="flex items-center gap-1">
-                  <button onClick={reloadIframe} title="Recarregar aplicativo" className="w-7 h-7 rounded-lg hover:bg-black/5 flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)]">
-                    <span className="material-symbols-outlined text-[16px]">refresh</span>
-                  </button>
-                  <button onClick={stopActiveAppContainer} title="Parar contêiner" className="w-7 h-7 rounded-lg hover:bg-black/5 flex items-center justify-center text-[var(--md-sys-color-error)]">
-                    <span className="material-symbols-outlined text-[16px]">stop_circle</span>
-                  </button>
-                  <button onClick={closeActiveApp} title="Fechar e voltar" className="w-7 h-7 rounded-lg hover:bg-black/5 flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)]">
-                    <span className="material-symbols-outlined text-[16px]">close</span>
-                  </button>
+            {activeTab === 'home' && <HomeView apps={apps} selectApp={selectApp} serverStatus={serverStatus} addToast={addToast} fetchStatus={fetchStatus} isRunning={isRunning} />}
+            {activeTab === 'docker' && <DockerView addToast={addToast} />}
+            {activeTab === 'ia' && <IaHubView addToast={addToast} />}
+            {activeTab === 'backup' && <BackupView serverStatus={serverStatus} addToast={addToast} />}
+            {activeTab === 'users' && <UsersView addToast={addToast} />}
+            {activeTab === 'maintenance' && <MaintenanceView serverStatus={serverStatus} addToast={addToast} fetchStatus={fetchStatus} />}
+            
+            {activeTab === 'app' && activeApp && (
+              <div className="w-full h-full flex flex-col bg-[var(--md-sys-color-surface)] md:border md:border-[var(--md-sys-color-surface-variant)] md:rounded-2xl overflow-hidden">
+                {/* App Iframe Controls */}
+                <div className="h-10 px-4 bg-[var(--md-sys-color-surface-variant)] flex items-center justify-between border-b border-[var(--md-sys-color-surface-variant)] flex-shrink-0 text-xs">
+                  <span className="font-mono text-[10px] text-[var(--md-sys-color-on-surface-variant)] truncate max-w-[150px] sm:max-w-md">
+                    {iframeUrl || 'Carregando...'}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button onClick={reloadIframe} title="Recarregar" className="w-7 h-7 rounded-lg hover:bg-black/5 flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)]">
+                      <span className="material-symbols-outlined text-[16px]">refresh</span>
+                    </button>
+                    <button onClick={stopActiveAppContainer} title="Parar" className="w-7 h-7 rounded-lg hover:bg-black/5 flex items-center justify-center text-[var(--md-sys-color-error)]">
+                      <span className="material-symbols-outlined text-[16px]">stop_circle</span>
+                    </button>
+                    <button onClick={closeActiveApp} title="Fechar" className="w-7 h-7 rounded-lg hover:bg-black/5 flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)]">
+                      <span className="material-symbols-outlined text-[16px]">close</span>
+                    </button>
+                  </div>
+                </div>
+                <div className="flex-1 bg-[var(--md-sys-color-background)]">
+                  {iframeUrl ? (
+                    <iframe src={iframeUrl} className="w-full h-full border-0" allow="clipboard-read; clipboard-write; fullscreen" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-xs text-[var(--md-sys-color-on-surface-variant)]">
+                      Iniciando aplicação...
+                    </div>
+                  )}
                 </div>
               </div>
-              <div className="flex-1 bg-[var(--md-sys-color-background)]">
-                {iframeUrl ? (
-                  <iframe src={iframeUrl} className="w-full h-full border-0" allow="clipboard-read; clipboard-write; fullscreen" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-xs text-[var(--md-sys-color-on-surface-variant)]">
-                    Aguardando inicialização do aplicativo...
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </main>
+            )}
+          </main>
+        </div>
       </div>
+
+      {/* Bottom Navigation for Mobile */}
+      <nav className={`md:hidden h-14 border-t border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex items-center justify-around flex-shrink-0 z-40 ${
+        activeTab === 'app' ? 'hidden' : 'flex'
+      }`}>
+        {[
+          { id: 'home', icon: 'home' },
+          { id: 'docker', icon: 'view_in_ar' },
+          { id: 'ia', icon: 'psychology' },
+          { id: 'backup', icon: 'cloud_sync' },
+          { id: 'users', icon: 'group' },
+          { id: 'maintenance', icon: 'build' }
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => { setActiveTab(tab.id); }}
+            className="flex items-center justify-center flex-1 py-2 text-[var(--md-sys-color-on-surface-variant)] hover:text-[var(--md-sys-color-primary)] transition-all"
+          >
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+              activeTab === tab.id 
+                ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)]' 
+                : ''
+            }`}>
+              <span className={`material-symbols-outlined text-xl ${activeTab === tab.id ? 'icon-filled text-[var(--md-sys-color-on-primary-container)]' : ''}`}>{tab.icon}</span>
+            </div>
+          </button>
+        ))}
+      </nav>
 
       <Toast toasts={toasts} removeToast={removeToast} />
     </div>
@@ -577,7 +634,7 @@ export default function DashboardPage() {
 }
 
 // ─── HOME VIEW ──────────────────────────────────────────────────────────────
-function HomeView({ apps, selectApp, serverStatus, addToast, fetchStatus }) {
+function HomeView({ apps, selectApp, serverStatus, addToast, fetchStatus, isRunning }) {
   const [loading, setLoading] = useState(false);
 
   const triggerPower = async (action) => {
@@ -587,7 +644,7 @@ function HomeView({ apps, selectApp, serverStatus, addToast, fetchStatus }) {
     setLoading(true);
     try {
       const data = await apiFetch(`/api/power/${action}`, { method: 'POST' });
-      if (data.ok) addToast(data.message || 'Comando executado com sucesso.', 'success');
+      if (data.ok) addToast('Comando executado com sucesso.', 'success');
       else addToast(data.error || 'Erro ao executar comando.', 'error');
     } catch {
       addToast('Erro ao conectar.', 'error');
@@ -608,56 +665,35 @@ function HomeView({ apps, selectApp, serverStatus, addToast, fetchStatus }) {
     setTimeout(fetchStatus, 3000);
   };
 
-  // Determine running state based on status
-  const isRunning = (app) => {
-    if (!serverStatus?.runningContainers) return false;
-    let containerName = `srv_${app.id}_sandbox`;
-    if (app.id === 'filebrowser') containerName = 'srv_filebrowser';
-    else if (app.id === 'jarvis') containerName = 'open-webui';
-    else if (app.id === 'cups') containerName = 'cupsd';
-    else if (app.id === 'scanner') containerName = 'scanservjs';
-    else if (app.id === 'ttyd') containerName = 'srv_dashboard';
-    else if (app.id === 'metabase') containerName = 'srv_metabase';
-    else if (app.id === 'jupyter') containerName = 'srv_jupyter_spark';
-    else if (app.id === 'onlyoffice') containerName = 'srv_onlyoffice';
-    else if (app.type === 'static') return true;
-
-    return serverStatus.runningContainers.some(c => 
-      c.toLowerCase() === containerName.toLowerCase() || c.toLowerCase().includes(containerName.toLowerCase())
-    );
-  };
+  // isRunning helper passed as prop
 
   return (
     <div className="space-y-6">
-      {/* Top Welcome / Quick Info */}
-      <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-6 rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold tracking-tight google-sans">Servidor Remoto</h2>
-          <p className="text-xs text-[var(--md-sys-color-on-surface-variant)] mt-1">
-            Status: {serverStatus?.online ? `Conectado via ${serverStatus.host}` : 'Desconectado'}
-          </p>
+      {/* Top Welcome / Quick Info Bar */}
+      <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <span className="material-symbols-outlined text-lg text-[var(--md-sys-color-primary)]">dns</span>
+          <span className="text-xs font-medium text-[var(--md-sys-color-on-surface-variant)] truncate">
+            {serverStatus?.online ? `${serverStatus.host}` : 'Servidor Offline'}
+          </span>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-1.5">
           {!serverStatus?.online && (
-            <button onClick={triggerWol} disabled={loading} className="btn-primary py-2 px-4 rounded-xl text-xs flex items-center gap-1.5 h-10">
-              <span className="material-symbols-outlined text-[16px]">bolt</span>
-              <span>Ligar (WOL)</span>
+            <button onClick={triggerWol} disabled={loading} title="Ligar (WOL)" className="w-9 h-9 rounded-xl bg-[var(--md-sys-color-primary)] text-white flex items-center justify-center transition-opacity hover:opacity-90">
+              <span className="material-symbols-outlined text-base">bolt</span>
             </button>
           )}
-          <button onClick={() => triggerPower('reboot')} disabled={loading || !serverStatus?.online} className="btn-ghost py-2 px-4 rounded-xl text-xs flex items-center gap-1.5 h-10 text-[var(--md-sys-color-warning)] border-[var(--md-sys-color-warning)]/20 hover:bg-[var(--md-sys-color-warning-container)]">
-            <span className="material-symbols-outlined text-[16px]">restart_alt</span>
-            <span>Reiniciar</span>
+          <button onClick={() => triggerPower('reboot')} disabled={loading || !serverStatus?.online} title="Reiniciar" className="w-9 h-9 rounded-xl border border-[var(--md-sys-color-warning)]/20 text-[var(--md-sys-color-warning)] bg-transparent hover:bg-[var(--md-sys-color-warning-container)]/10 flex items-center justify-center disabled:opacity-50">
+            <span className="material-symbols-outlined text-base">restart_alt</span>
           </button>
-          <button onClick={() => triggerPower('shutdown')} disabled={loading || !serverStatus?.online} className="btn-danger py-2 px-4 rounded-xl text-xs flex items-center gap-1.5 h-10">
-            <span className="material-symbols-outlined text-[16px]">power_off</span>
-            <span>Desligar</span>
+          <button onClick={() => triggerPower('shutdown')} disabled={loading || !serverStatus?.online} title="Desligar" className="w-9 h-9 rounded-xl bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)] hover:bg-[var(--md-sys-color-error-container)]/80 flex items-center justify-center disabled:opacity-50">
+            <span className="material-symbols-outlined text-base">power_off</span>
           </button>
         </div>
       </div>
 
       {/* Quick Launch App Grid */}
-      <div className="space-y-3">
-        <h3 className="text-xs font-bold text-[var(--md-sys-color-on-surface-variant)] uppercase tracking-wider px-1">Lançador Rápido</h3>
+      <div className="space-y-2">
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
           {apps.map((app) => {
             const active = isRunning(app);
@@ -665,17 +701,17 @@ function HomeView({ apps, selectApp, serverStatus, addToast, fetchStatus }) {
               <button
                 key={app.id}
                 onClick={() => selectApp(app)}
-                className={`border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl flex flex-col items-center justify-center text-center transition-all hover:border-[var(--md-sys-color-primary)] ${
+                className={`border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl flex flex-col items-center justify-center text-center transition-all hover:border-[var(--md-sys-color-primary)] relative ${
                   active ? 'ring-1 ring-[var(--md-sys-color-primary)]' : ''
                 }`}
               >
-                <span className={`material-symbols-outlined text-2xl mb-2 ${
-                  active ? 'text-[var(--md-sys-color-primary)]' : 'text-[var(--md-sys-color-on-surface-variant)]'
+                <div className={`absolute top-2 right-2 w-1.5 h-1.5 rounded-full ${
+                  active ? 'bg-[var(--md-sys-color-tertiary)] animate-pulse' : 'bg-[var(--md-sys-color-on-surface-variant)]/30'
+                }`} />
+                <span className={`material-symbols-outlined text-2xl mb-1.5 ${
+                  active ? 'text-[var(--md-sys-color-primary)] icon-filled' : 'text-[var(--md-sys-color-on-surface-variant)]'
                 }`}>{app.icon}</span>
-                <span className="text-xs font-medium truncate w-full">{app.name}</span>
-                <span className="text-[9px] text-[var(--md-sys-color-on-surface-variant)] mt-1 opacity-75">
-                  {active ? 'Ativo' : 'Parado'}
-                </span>
+                <span className="text-[11px] font-medium truncate w-full">{app.name}</span>
               </button>
             );
           })}
@@ -684,28 +720,28 @@ function HomeView({ apps, selectApp, serverStatus, addToast, fetchStatus }) {
 
       {/* Connected Disks summary */}
       {serverStatus?.disks && serverStatus.disks.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-xs font-bold text-[var(--md-sys-color-on-surface-variant)] uppercase tracking-wider px-1">Discos Conectados</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {serverStatus.disks.map((d, idx) => (
-              <div key={idx} className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-2 text-xs">
-                <div className="flex justify-between font-medium">
-                  <span className="truncate">{d.mount}</span>
-                  <span className="text-[var(--md-sys-color-on-surface-variant)]">{d.used} / {d.total}</span>
-                </div>
-                <div className="w-full bg-[var(--md-sys-color-surface-variant)] h-1.5 rounded-full overflow-hidden">
-                  <div 
-                    className="bg-[var(--md-sys-color-primary)] h-full transition-all" 
-                    style={{ width: `${d.percent}%` }}
-                  />
-                </div>
-                <div className="flex justify-between text-[10px] text-[var(--md-sys-color-on-surface-variant)]">
-                  <span>{d.filesystem}</span>
-                  <span>{d.percent}% Usado</span>
-                </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {serverStatus.disks.map((d, idx) => (
+            <div key={idx} className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-3.5 rounded-2xl space-y-2 text-xs">
+              <div className="flex justify-between font-medium">
+                <span className="truncate flex items-center gap-1">
+                  <span className="material-symbols-outlined text-sm text-[var(--md-sys-color-on-surface-variant)]">hard_drive</span>
+                  {d.mount}
+                </span>
+                <span className="text-[var(--md-sys-color-on-surface-variant)] font-semibold">{d.used} / {d.total}</span>
               </div>
-            ))}
-          </div>
+              <div className="w-full bg-[var(--md-sys-color-surface-variant)] h-1 rounded-full overflow-hidden">
+                <div 
+                  className="bg-[var(--md-sys-color-primary)] h-full transition-all" 
+                  style={{ width: `${d.percent}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-[9px] text-[var(--md-sys-color-on-surface-variant)]">
+                <span>{d.filesystem}</span>
+                <span>{d.percent}%</span>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -730,7 +766,7 @@ function DockerView({ addToast }) {
       if (data.ok) {
         setContainers(data.containers || []);
       } else {
-        addToast(data.error || 'Erro ao carregar contêineres.', 'error');
+        addToast('Erro ao carregar contêineres.', 'error');
       }
     } catch {
       addToast('Erro de conexão.', 'error');
@@ -745,7 +781,7 @@ function DockerView({ addToast }) {
       if (data.ok) {
         setImages(data.images || []);
       } else {
-        addToast(data.error || 'Erro ao carregar imagens.', 'error');
+        addToast('Erro ao carregar imagens.', 'error');
       }
     } catch {
       addToast('Erro de conexão.', 'error');
@@ -768,10 +804,10 @@ function DockerView({ addToast }) {
         body: JSON.stringify({ name })
       });
       if (data.ok) {
-        addToast(data.message || 'Comando executado.', 'success');
+        addToast('Comando executado.', 'success');
         fetchContainers();
       } else {
-        addToast(data.error || 'Falha ao executar comando.', 'error');
+        addToast('Falha ao executar comando.', 'error');
       }
     } catch {
       addToast('Erro de rede.', 'error');
@@ -792,7 +828,7 @@ function DockerView({ addToast }) {
         setLogs(`Erro ao carregar logs: ${data.error}`);
       }
     } catch {
-      setLogs('Erro de conexão com o servidor.');
+      setLogs('Erro de conexão.');
     }
     setLoading(false);
   };
@@ -813,67 +849,69 @@ function DockerView({ addToast }) {
   return (
     <div className="space-y-4">
       {/* Sub tabs and controls */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] p-3 rounded-2xl text-xs">
-        <div className="flex gap-2">
+      <div className="flex items-center justify-between gap-3 bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] p-2.5 rounded-2xl text-xs">
+        <div className="flex gap-1.5">
           <button 
             onClick={() => setTab('containers')} 
-            className={`px-4 py-2 rounded-xl font-medium transition-all ${
+            className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${
               tab === 'containers' 
                 ? 'bg-[var(--md-sys-color-primary)] text-white' 
                 : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
             }`}
           >
-            Contêineres
+            <span className="material-symbols-outlined text-[16px]">view_in_ar</span>
+            <span className="hidden sm:inline">Contêineres</span>
           </button>
           <button 
             onClick={() => setTab('images')} 
-            className={`px-4 py-2 rounded-xl font-medium transition-all ${
+            className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${
               tab === 'images' 
                 ? 'bg-[var(--md-sys-color-primary)] text-white' 
                 : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
             }`}
           >
-            Imagens
+            <span className="material-symbols-outlined text-[16px]">image</span>
+            <span className="hidden sm:inline">Imagens</span>
           </button>
           {logsContainer && (
             <button 
               onClick={() => setTab('logs')} 
-              className={`px-4 py-2 rounded-xl font-medium transition-all ${
+              className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${
                 tab === 'logs' 
                   ? 'bg-[var(--md-sys-color-primary)] text-white' 
                   : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
               }`}
             >
-              Logs: {logsContainer}
+              <span className="material-symbols-outlined text-[16px]">notes</span>
+              <span className="hidden sm:inline">Logs: {logsContainer}</span>
             </button>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           {tab === 'containers' && (
-            <label className="flex items-center gap-1.5 cursor-pointer text-[var(--md-sys-color-on-surface-variant)] select-none">
+            <label className="flex items-center gap-1.5 cursor-pointer text-[var(--md-sys-color-on-surface-variant)] select-none text-[11px]">
               <input 
                 type="checkbox" 
                 checked={filterAll} 
                 onChange={(e) => setFilterAll(e.target.checked)} 
-                className="w-4 h-4 rounded accent-[var(--md-sys-color-primary)]"
+                className="w-3.5 h-3.5 rounded accent-[var(--md-sys-color-primary)]"
               />
-              <span>Mostrar todos (-a)</span>
+              <span>Todos (-a)</span>
             </label>
           )}
-          <button onClick={restartDockerService} disabled={loading} className="btn-ghost py-2 px-3 rounded-xl flex items-center gap-1.5 text-xs text-[var(--md-sys-color-error)] border-[var(--md-sys-color-error)]/20 hover:bg-[var(--md-sys-color-error-container)]">
+          <button onClick={restartDockerService} disabled={loading} title="Reiniciar Serviço Docker" className="w-8 h-8 rounded-lg border border-[var(--md-sys-color-error)]/20 hover:bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-error)] flex items-center justify-center">
             <span className="material-symbols-outlined text-base">restart_alt</span>
-            <span>Reiniciar Docker</span>
           </button>
         </div>
       </div>
 
       {/* Main Content Area */}
-      <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] rounded-2xl overflow-hidden min-h-[300px] flex flex-col">
+      <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] rounded-2xl overflow-hidden min-h-[250px] flex flex-col">
         {loading && (
           <div className="p-8 text-center text-xs text-[var(--md-sys-color-on-surface-variant)] flex items-center justify-center gap-2 flex-1">
             <span className="animate-spin material-symbols-outlined text-base">autorenew</span>
-            <span>Carregando dados do Docker...</span>
+            <span>Carregando...</span>
           </div>
         )}
 
@@ -882,43 +920,45 @@ function DockerView({ addToast }) {
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="bg-[var(--md-sys-color-surface-variant)] border-b border-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)] font-semibold">
-                    <th className="text-left py-3 px-4">Nome</th>
-                    <th className="text-left py-3 px-4">Status</th>
-                    <th className="text-left py-3 px-4 hidden lg:table-cell">Portas</th>
-                    <th className="text-right py-3 px-4">Ações</th>
+                  <tr className="bg-[var(--md-sys-color-surface-variant)]/50 border-b border-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)]">
+                    <th className="text-left py-2.5 px-4 font-semibold">Nome</th>
+                    <th className="text-left py-2.5 px-4 font-semibold">Status</th>
+                    <th className="text-left py-2.5 px-4 font-semibold hidden lg:table-cell">Portas</th>
+                    <th className="text-right py-2.5 px-4 font-semibold">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--md-sys-color-surface-variant)]">
                   {containers.map((c, idx) => {
                     const active = c.Status?.includes('Up');
                     return (
-                      <tr key={idx} className="hover:bg-[var(--md-sys-color-surface-variant)]/50 transition-colors">
-                        <td className="py-3 px-4 font-mono font-medium truncate max-w-[150px]">{c.Names}</td>
-                        <td className="py-3 px-4">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            active ? 'bg-[var(--md-sys-color-tertiary-container)] text-[var(--md-sys-color-on-tertiary-container)]' : 'bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)]'
-                          }`}>{c.Status}</span>
+                      <tr key={idx} className="hover:bg-[var(--md-sys-color-surface-variant)]/30 transition-colors">
+                        <td className="py-2.5 px-4 font-mono truncate max-w-[150px]">{c.Names}</td>
+                        <td className="py-2.5 px-4">
+                          <div className="flex items-center">
+                            <span className={`w-2 h-2 rounded-full ${
+                              active ? 'bg-[var(--md-sys-color-tertiary)] animate-pulse' : 'bg-[var(--md-sys-color-error)]'
+                            }`} />
+                          </div>
                         </td>
-                        <td className="py-3 px-4 hidden lg:table-cell font-mono text-[10px] text-[var(--md-sys-color-on-surface-variant)] max-w-[200px] truncate">{c.Ports || '—'}</td>
-                        <td className="py-3 px-4 text-right space-x-1 whitespace-nowrap">
+                        <td className="py-2.5 px-4 hidden lg:table-cell font-mono text-[10px] text-[var(--md-sys-color-on-surface-variant)] max-w-[200px] truncate">{c.Ports || '—'}</td>
+                        <td className="py-2.5 px-4 text-right space-x-0.5 whitespace-nowrap">
                           {!active ? (
-                            <button onClick={() => triggerAction('start', c.Names)} title="Iniciar" className="w-8 h-8 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-primary)]">
-                              <span className="material-symbols-outlined text-[18px]">play_arrow</span>
+                            <button onClick={() => triggerAction('start', c.Names)} title="Iniciar" className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-primary)]">
+                              <span className="material-symbols-outlined text-[16px]">play_arrow</span>
                             </button>
                           ) : (
-                            <button onClick={() => triggerAction('stop', c.Names)} title="Parar" className="w-8 h-8 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-error)]">
-                              <span className="material-symbols-outlined text-[18px]">stop</span>
+                            <button onClick={() => triggerAction('stop', c.Names)} title="Parar" className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-error)]">
+                              <span className="material-symbols-outlined text-[16px]">stop</span>
                             </button>
                           )}
-                          <button onClick={() => triggerAction('restart', c.Names)} title="Reiniciar" className="w-8 h-8 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-warning)]">
-                            <span className="material-symbols-outlined text-[18px]">autorenew</span>
+                          <button onClick={() => triggerAction('restart', c.Names)} title="Reiniciar" className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-warning)]">
+                            <span className="material-symbols-outlined text-[16px]">autorenew</span>
                           </button>
-                          <button onClick={() => showLogs(c.Names)} title="Logs" className="w-8 h-8 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)]">
-                            <span className="material-symbols-outlined text-[18px]">notes</span>
+                          <button onClick={() => showLogs(c.Names)} title="Logs" className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)]">
+                            <span className="material-symbols-outlined text-[16px]">notes</span>
                           </button>
-                          <button onClick={() => triggerAction('rm', c.Names)} title="Remover" className="w-8 h-8 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-error)]">
-                            <span className="material-symbols-outlined text-[18px]">delete</span>
+                          <button onClick={() => triggerAction('rm', c.Names)} title="Remover" className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-error)]">
+                            <span className="material-symbols-outlined text-[16px]">delete</span>
                           </button>
                         </td>
                       </tr>
@@ -928,7 +968,7 @@ function DockerView({ addToast }) {
               </table>
             </div>
           ) : (
-            <div className="p-8 text-center text-xs text-[var(--md-sys-color-on-surface-variant)] flex-1 flex items-center justify-center">Sem contêineres detectados.</div>
+            <div className="p-8 text-center text-xs text-[var(--md-sys-color-on-surface-variant)] flex-1 flex items-center justify-center">Nenhum contêiner.</div>
           )
         )}
 
@@ -937,36 +977,36 @@ function DockerView({ addToast }) {
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="bg-[var(--md-sys-color-surface-variant)] border-b border-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)] font-semibold">
-                    <th className="text-left py-3 px-4">Repository</th>
-                    <th className="text-left py-3 px-4">Tag</th>
-                    <th className="text-left py-3 px-4">Size</th>
-                    <th className="text-left py-3 px-4">ID</th>
+                  <tr className="bg-[var(--md-sys-color-surface-variant)]/50 border-b border-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)]">
+                    <th className="text-left py-2.5 px-4 font-semibold">Repository</th>
+                    <th className="text-left py-2.5 px-4 font-semibold">Tag</th>
+                    <th className="text-left py-2.5 px-4 font-semibold">Size</th>
+                    <th className="text-left py-2.5 px-4 font-semibold">ID</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--md-sys-color-surface-variant)]">
                   {images.map((img, idx) => (
-                    <tr key={idx} className="hover:bg-[var(--md-sys-color-surface-variant)]/50 transition-colors">
-                      <td className="py-3 px-4 font-mono font-medium">{img.Repository}</td>
-                      <td className="py-3 px-4 font-mono">{img.Tag}</td>
-                      <td className="py-3 px-4 font-mono text-[var(--md-sys-color-on-surface-variant)]">{img.Size}</td>
-                      <td className="py-3 px-4 font-mono text-[10px] text-[var(--md-sys-color-on-surface-variant)]">{img.ID?.substring(0, 12)}</td>
+                    <tr key={idx} className="hover:bg-[var(--md-sys-color-surface-variant)]/30 transition-colors">
+                      <td className="py-2 px-4 font-mono">{img.Repository}</td>
+                      <td className="py-2 px-4 font-mono text-[var(--md-sys-color-on-surface-variant)]">{img.Tag}</td>
+                      <td className="py-2 px-4 font-mono text-[var(--md-sys-color-on-surface-variant)]">{img.Size}</td>
+                      <td className="py-2 px-4 font-mono text-[10px] text-[var(--md-sys-color-on-surface-variant)]">{img.ID?.substring(0, 12)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           ) : (
-            <div className="p-8 text-center text-xs text-[var(--md-sys-color-on-surface-variant)] flex-1 flex items-center justify-center">Sem imagens no servidor.</div>
+            <div className="p-8 text-center text-xs text-[var(--md-sys-color-on-surface-variant)] flex-1 flex items-center justify-center">Nenhuma imagem.</div>
           )
         )}
 
         {!loading && tab === 'logs' && (
-          <div className="flex-1 flex flex-col p-4 bg-black text-green-400 font-mono text-xs overflow-hidden h-[450px]">
-            <div className="flex items-center justify-between border-b border-gray-800 pb-2 mb-2">
-              <span>Logs do container: {logsContainer}</span>
-              <button onClick={() => showLogs(logsContainer)} className="hover:text-white flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-sm">refresh</span>
+          <div className="flex-1 flex flex-col p-3 bg-black text-green-400 font-mono text-xs overflow-hidden h-[350px]">
+            <div className="flex items-center justify-between border-b border-gray-800 pb-1.5 mb-2 text-[10px]">
+              <span className="truncate">Logs: {logsContainer}</span>
+              <button onClick={() => showLogs(logsContainer)} className="hover:text-white flex items-center gap-1">
+                <span className="material-symbols-outlined text-[12px]">refresh</span>
                 <span>Recarregar</span>
               </button>
             </div>
@@ -1008,10 +1048,8 @@ function IaHubView({ addToast }) {
     try {
       const data = await apiFetch('/api/ia/models');
       if (data.ok) {
-        // Parse models output into objects
         const lines = (data.output || '').split('\n').map(l => l.trim()).filter(Boolean);
         const parsed = [];
-        // Skip header line
         for (let i = 1; i < lines.length; i++) {
           const parts = lines[i].split(/\s{2,}/);
           if (parts.length >= 3) {
@@ -1031,7 +1069,7 @@ function IaHubView({ addToast }) {
     setStatusLoading(true);
     try {
       const data = await apiFetch('/api/ia/status');
-      setOllamaStatus(data.output || 'Erro ao obter status.');
+      setOllamaStatus(data.output || 'Sem status.');
     } catch {
       setOllamaStatus('Erro ao conectar.');
     }
@@ -1048,12 +1086,10 @@ function IaHubView({ addToast }) {
     }
   }, [subTab, fetchStatus]);
 
-  // Scroll to bottom of chat
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, chatLoading]);
 
-  // Chat Send
   const sendChatMessage = async (e) => {
     e.preventDefault();
     if (!chatInput.trim() || !chatModel || chatLoading) return;
@@ -1073,15 +1109,14 @@ function IaHubView({ addToast }) {
       if (data.ok && data.message) {
         setMessages(prev => [...prev, data.message]);
       } else {
-        addToast(data.error || 'Erro na resposta do modelo.', 'error');
+        addToast('Erro na IA.', 'error');
       }
     } catch {
-      addToast('Erro ao se conectar ao Ollama.', 'error');
+      addToast('Erro ao se conectar.', 'error');
     }
     setChatLoading(false);
   };
 
-  // Agent Trigger
   const triggerAgent = async (e) => {
     e.preventDefault();
     if (!agentPrompt.trim() || agentLoading) return;
@@ -1094,19 +1129,18 @@ function IaHubView({ addToast }) {
         body: JSON.stringify({ prompt: agentPrompt, mode: agentMode })
       });
       if (data.ok) {
-        setAgentOutput(data.output || 'Agente executado com sucesso.');
-        addToast('Agente executou com sucesso.', 'success');
+        setAgentOutput(data.output || 'Concluído.');
+        addToast('Agente concluído.', 'success');
       } else {
         setAgentOutput(`Erro: ${data.error}`);
-        addToast(data.error || 'Falha na execução.', 'error');
+        addToast('Falha no agente.', 'error');
       }
     } catch {
-      addToast('Erro de conexão.', 'error');
+      addToast('Erro de rede.', 'error');
     }
     setAgentLoading(false);
   };
 
-  // Pull Model
   const startPull = async (e) => {
     e.preventDefault();
     if (!pullModelName.trim() || pullLoading) return;
@@ -1118,11 +1152,11 @@ function IaHubView({ addToast }) {
         body: JSON.stringify({ model: pullModelName })
       });
       if (data.ok) {
-        addToast(`Modelo ${pullModelName} baixado com sucesso!`, 'success');
+        addToast(`Modelo ${pullModelName} baixado!`, 'success');
         setPullModelName('');
         fetchModels();
       } else {
-        addToast(data.error || 'Erro no download.', 'error');
+        addToast('Erro no download.', 'error');
       }
     } catch {
       addToast('Erro de conexão.', 'error');
@@ -1130,7 +1164,6 @@ function IaHubView({ addToast }) {
     setPullLoading(false);
   };
 
-  // Remove Model
   const removeModel = async (name) => {
     if (!window.confirm(`Deseja realmente remover o modelo ${name}?`)) return;
 
@@ -1143,7 +1176,7 @@ function IaHubView({ addToast }) {
         addToast(`Modelo ${name} removido!`, 'success');
         fetchModels();
       } else {
-        addToast(data.error || 'Erro ao remover.', 'error');
+        addToast('Erro ao remover.', 'error');
       }
     } catch {
       addToast('Erro de rede.', 'error');
@@ -1153,51 +1186,60 @@ function IaHubView({ addToast }) {
   return (
     <div className="space-y-4">
       {/* Sub tabs */}
-      <div className="flex bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] p-2 rounded-2xl text-xs gap-2">
-        <button onClick={() => setSubTab('chat')} className={`px-4 py-2 rounded-xl font-medium transition-all ${subTab === 'chat' ? 'bg-[var(--md-sys-color-primary)] text-white' : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'}`}>Conversar</button>
-        <button onClick={() => setSubTab('agent')} className={`px-4 py-2 rounded-xl font-medium transition-all ${subTab === 'agent' ? 'bg-[var(--md-sys-color-primary)] text-white' : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'}`}>Agente</button>
-        <button onClick={() => setSubTab('manage')} className={`px-4 py-2 rounded-xl font-medium transition-all ${subTab === 'manage' ? 'bg-[var(--md-sys-color-primary)] text-white' : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'}`}>Gerenciar</button>
+      <div className="flex bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] p-2 rounded-2xl text-xs gap-1.5">
+        <button onClick={() => setSubTab('chat')} className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${subTab === 'chat' ? 'bg-[var(--md-sys-color-primary)] text-white' : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'}`}>
+          <span className="material-symbols-outlined text-[16px]">forum</span>
+          <span>Conversar</span>
+        </button>
+        <button onClick={() => setSubTab('agent')} className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${subTab === 'agent' ? 'bg-[var(--md-sys-color-primary)] text-white' : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'}`}>
+          <span className="material-symbols-outlined text-[16px]">smart_toy</span>
+          <span>Agente</span>
+        </button>
+        <button onClick={() => setSubTab('manage')} className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${subTab === 'manage' ? 'bg-[var(--md-sys-color-primary)] text-white' : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'}`}>
+          <span className="material-symbols-outlined text-[16px]">settings</span>
+          <span>Gerenciar</span>
+        </button>
       </div>
 
-      <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] rounded-2xl p-6 min-h-[350px] flex flex-col justify-between">
+      <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] rounded-2xl p-4 min-h-[300px] flex flex-col justify-between text-xs">
         {/* CHAT HUB */}
         {subTab === 'chat' && (
-          <div className="flex-1 flex flex-col h-[500px]">
+          <div className="flex-1 flex flex-col h-[400px]">
             {/* Top Selector */}
-            <div className="flex items-center justify-between pb-4 border-b border-[var(--md-sys-color-surface-variant)] mb-4 text-xs">
-              <span className="font-medium text-[var(--md-sys-color-on-surface-variant)]">Modelo de Chat:</span>
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--md-sys-color-surface-variant)] mb-3 text-xs">
+              <span className="font-semibold text-[var(--md-sys-color-on-surface-variant)] flex items-center gap-1">
+                <span className="material-symbols-outlined text-sm">psychology</span>
+                Modelo
+              </span>
               <select 
                 value={chatModel} 
                 onChange={(e) => setChatModel(e.target.value)}
-                className="bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3 py-1.5 outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] font-medium"
+                className="bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-2.5 py-1 outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] font-medium text-[11px]"
               >
                 {models.length > 0 ? (
                   models.map((m, idx) => (
-                    <option key={idx} value={m.name}>{m.name} ({m.size})</option>
+                    <option key={idx} value={m.name}>{m.name}</option>
                   ))
                 ) : (
-                  <option value="">Sem modelos carregados</option>
+                  <option value="">Sem modelos</option>
                 )}
               </select>
             </div>
 
             {/* Chat Messages */}
-            <div className="flex-1 overflow-y-auto space-y-4 pr-1 pb-4 text-xs">
+            <div className="flex-1 overflow-y-auto space-y-3 pb-3 pr-1 text-xs">
               {messages.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)] opacity-75">
-                  Selecione um modelo e envie uma mensagem para começar a conversar.
+                <div className="h-full flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)] opacity-60">
+                  Envie uma mensagem.
                 </div>
               ) : (
                 messages.map((m, idx) => (
                   <div key={idx} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[75%] p-3.5 rounded-2xl border text-xs leading-relaxed ${
+                    <div className={`max-w-[85%] p-3 rounded-2xl border ${
                       m.role === 'user' 
                         ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] border-[var(--md-sys-color-primary)]/10 rounded-br-none' 
                         : 'bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] border-transparent rounded-bl-none'
                     }`}>
-                      <div className="font-bold mb-1 opacity-75 uppercase text-[9px] tracking-wider">
-                        {m.role === 'user' ? 'Você' : chatModel}
-                      </div>
                       <div className="whitespace-pre-wrap">{m.content}</div>
                     </div>
                   </div>
@@ -1205,9 +1247,8 @@ function IaHubView({ addToast }) {
               )}
               {chatLoading && (
                 <div className="flex justify-start">
-                  <div className="max-w-[75%] p-3.5 rounded-2xl bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] border-transparent rounded-bl-none flex items-center gap-2">
+                  <div className="p-3 rounded-2xl bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] border-transparent rounded-bl-none flex items-center gap-1.5">
                     <span className="material-symbols-outlined animate-spin text-sm">autorenew</span>
-                    <span className="text-[10px] font-medium animate-pulse">Gerando resposta...</span>
                   </div>
                 </div>
               )}
@@ -1215,21 +1256,21 @@ function IaHubView({ addToast }) {
             </div>
 
             {/* Input Form */}
-            <form onSubmit={sendChatMessage} className="flex gap-2 pt-4 border-t border-[var(--md-sys-color-surface-variant)] mt-auto">
+            <form onSubmit={sendChatMessage} className="flex gap-2 pt-3 border-t border-[var(--md-sys-color-surface-variant)]">
               <input
                 type="text"
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
-                placeholder="Digite sua mensagem para a IA..."
+                placeholder="Sua mensagem..."
                 disabled={chatLoading || !chatModel}
-                className="flex-1 bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-4 py-3 text-xs outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] transition-all"
+                className="flex-1 bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3.5 py-2 text-xs outline-none border border-transparent focus:border-[var(--md-sys-color-primary)]"
               />
               <button 
                 type="submit" 
                 disabled={chatLoading || !chatInput.trim() || !chatModel}
-                className="btn-primary px-5 py-3 rounded-xl text-xs font-bold disabled:opacity-50 flex-shrink-0"
+                className="btn-primary w-9 h-9 rounded-xl flex items-center justify-center disabled:opacity-50 flex-shrink-0"
               >
-                Enviar
+                <span className="material-symbols-outlined text-sm">send</span>
               </button>
             </form>
           </div>
@@ -1237,74 +1278,60 @@ function IaHubView({ addToast }) {
 
         {/* AGENT HUB */}
         {subTab === 'agent' && (
-          <div className="flex-1 flex flex-col h-[500px]">
-            <form onSubmit={triggerAgent} className="space-y-4">
-              <div className="flex gap-3 items-end">
-                <div className="flex-1">
-                  <label className="block text-[10px] font-bold text-[var(--md-sys-color-on-surface-variant)] uppercase tracking-wider mb-1.5 px-1">Comando ou Prompt para o Agente</label>
-                  <input
-                    type="text"
-                    value={agentPrompt}
-                    onChange={(e) => setAgentPrompt(e.target.value)}
-                    placeholder="ex: 'organizar arquivos na pasta /home/rodrigo/test'"
-                    className="w-full bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-4 py-3 text-xs outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] transition-all"
-                    disabled={agentLoading}
-                  />
-                </div>
-                <div className="flex flex-col gap-1 text-xs">
-                  <label className="text-[10px] font-bold text-[var(--md-sys-color-on-surface-variant)] uppercase tracking-wider mb-0.5">Modo</label>
-                  <select 
-                    value={agentMode} 
-                    onChange={(e) => setAgentMode(e.target.value)}
-                    className="bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3 py-3 outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] font-medium h-[42px]"
-                  >
-                    <option value="safe">Modo Seguro (Confirmação)</option>
-                    <option value="autonomous">Autônomo (Livre)</option>
-                  </select>
-                </div>
-                <button type="submit" disabled={agentLoading || !agentPrompt.trim()} className="btn-primary px-6 h-[42px] rounded-xl text-xs font-bold">
-                  Executar
+          <div className="flex-1 flex flex-col h-[400px]">
+            <form onSubmit={triggerAgent} className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                value={agentPrompt}
+                onChange={(e) => setAgentPrompt(e.target.value)}
+                placeholder="Comando para o agente..."
+                className="flex-1 bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3.5 py-2 text-xs outline-none border border-transparent focus:border-[var(--md-sys-color-primary)]"
+                disabled={agentLoading}
+              />
+              <div className="flex gap-2">
+                <select 
+                  value={agentMode} 
+                  onChange={(e) => setAgentMode(e.target.value)}
+                  className="bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-2 py-2 outline-none text-[11px] font-medium"
+                >
+                  <option value="safe">Confirmar</option>
+                  <option value="autonomous">Livre</option>
+                </select>
+                <button type="submit" disabled={agentLoading || !agentPrompt.trim()} className="btn-primary px-4 rounded-xl font-bold flex items-center gap-1">
+                  <span className="material-symbols-outlined text-sm">play_arrow</span>
+                  <span>Executar</span>
                 </button>
               </div>
             </form>
 
-            {/* Console Output */}
-            <div className="flex-1 mt-6 flex flex-col bg-black text-green-400 font-mono text-xs p-4 rounded-xl overflow-hidden">
-              <div className="border-b border-gray-800 pb-2 mb-2 flex justify-between">
-                <span>Console do Agente Autônomo (open-interpreter)</span>
-                {agentLoading && <span className="animate-pulse">Rodando...</span>}
-              </div>
-              <pre className="flex-1 overflow-auto whitespace-pre-wrap">{agentOutput || 'Aguardando comando do agente...'}</pre>
+            <div className="flex-1 mt-4 flex flex-col bg-black text-green-400 font-mono text-[11px] p-3 rounded-xl overflow-hidden">
+              <pre className="flex-1 overflow-auto whitespace-pre-wrap">{agentOutput || 'Console do Agente...'}</pre>
             </div>
           </div>
         )}
 
         {/* MANAGE HUB */}
         {subTab === 'manage' && (
-          <div className="flex-1 space-y-6 text-xs">
-            {/* Split layout */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="flex-1 space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {/* Models List */}
-              <div className="space-y-3">
-                <h4 className="font-bold text-[var(--md-sys-color-on-surface-variant)] uppercase tracking-wider px-1">Modelos Instalados</h4>
+              <div className="space-y-2">
                 <div className="border border-[var(--md-sys-color-surface-variant)] rounded-2xl overflow-hidden bg-[var(--md-sys-color-surface-variant)]/10">
                   {modelsLoading ? (
-                    <div className="p-6 text-center text-[var(--md-sys-color-on-surface-variant)]">Carregando modelos...</div>
+                    <div className="p-6 text-center">Carregando...</div>
                   ) : models.length > 0 ? (
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="bg-[var(--md-sys-color-surface-variant)] border-b border-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)] font-semibold">
-                          <th className="text-left py-2.5 px-3">Nome</th>
-                          <th className="text-left py-2.5 px-3">ID</th>
-                          <th className="text-left py-2.5 px-3">Tamanho</th>
-                          <th className="text-right py-2.5 px-3">Ações</th>
+                        <tr className="bg-[var(--md-sys-color-surface-variant)] border-b border-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)]">
+                          <th className="text-left py-2 px-3 font-semibold">Modelo</th>
+                          <th className="text-left py-2 px-3 font-semibold">Tamanho</th>
+                          <th className="text-right py-2 px-3 font-semibold">Ação</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[var(--md-sys-color-surface-variant)]">
                         {models.map((m, idx) => (
-                          <tr key={idx} className="hover:bg-[var(--md-sys-color-surface-variant)]/50 transition-colors">
+                          <tr key={idx} className="hover:bg-[var(--md-sys-color-surface-variant)]/30 transition-colors">
                             <td className="py-2 px-3 font-mono font-medium">{m.name}</td>
-                            <td className="py-2 px-3 font-mono text-[var(--md-sys-color-on-surface-variant)]">{m.id}</td>
                             <td className="py-2 px-3 font-mono text-[var(--md-sys-color-on-surface-variant)]">{m.size}</td>
                             <td className="py-2 px-3 text-right">
                               <button onClick={() => removeModel(m.name)} title="Remover" className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-error)]">
@@ -1316,48 +1343,33 @@ function IaHubView({ addToast }) {
                       </tbody>
                     </table>
                   ) : (
-                    <div className="p-6 text-center text-[var(--md-sys-color-on-surface-variant)]">Nenhum modelo instalado.</div>
+                    <div className="p-6 text-center">Sem modelos instalados.</div>
                   )}
                 </div>
               </div>
 
               {/* Download & Status */}
-              <div className="space-y-6">
+              <div className="space-y-4">
                 {/* Download Form */}
-                <div className="space-y-3">
-                  <h4 className="font-bold text-[var(--md-sys-color-on-surface-variant)] uppercase tracking-wider px-1">Baixar Modelo (Pull)</h4>
-                  <form onSubmit={startPull} className="flex gap-2">
-                    <input
-                      type="text"
-                      value={pullModelName}
-                      onChange={(e) => setPullModelName(e.target.value)}
-                      placeholder="ex: deepseek-r1:8b"
-                      disabled={pullLoading}
-                      className="flex-1 bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-4 py-2.5 outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] transition-all"
-                    />
-                    <button type="submit" disabled={pullLoading || !pullModelName.trim()} className="btn-primary px-5 py-2.5 rounded-xl font-bold flex items-center gap-1.5">
-                      {pullLoading ? (
-                        <>
-                          <span className="material-symbols-outlined animate-spin text-sm">autorenew</span>
-                          <span>Baixando...</span>
-                        </>
-                      ) : (
-                        <>
-                          <span className="material-symbols-outlined text-sm">download</span>
-                          <span>Baixar</span>
-                        </>
-                      )}
-                    </button>
-                  </form>
-                </div>
+                <form onSubmit={startPull} className="flex gap-2">
+                  <input
+                    type="text"
+                    value={pullModelName}
+                    onChange={(e) => setPullModelName(e.target.value)}
+                    placeholder="deepseek-r1:8b"
+                    disabled={pullLoading}
+                    className="flex-1 bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3 py-2 outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] text-xs"
+                  />
+                  <button type="submit" disabled={pullLoading || !pullModelName.trim()} className="btn-primary px-4 py-2 rounded-xl font-bold flex items-center gap-1.5 flex-shrink-0">
+                    <span className="material-symbols-outlined text-sm">download</span>
+                    <span>Baixar</span>
+                  </button>
+                </form>
 
-                {/* Ollama Service Status */}
-                <div className="space-y-3 flex-1 flex flex-col">
-                  <h4 className="font-bold text-[var(--md-sys-color-on-surface-variant)] uppercase tracking-wider px-1">Status do Serviço Ollama</h4>
-                  <pre className="flex-grow p-4 bg-black text-green-400 font-mono text-[10px] rounded-xl whitespace-pre-wrap overflow-auto max-h-[220px]">
-                    {statusLoading ? 'Carregando status...' : ollamaStatus}
-                  </pre>
-                </div>
+                {/* Status Box */}
+                <pre className="p-3 bg-black text-green-400 font-mono text-[10px] rounded-xl whitespace-pre-wrap overflow-auto max-h-[150px]">
+                  {statusLoading ? 'Status...' : ollamaStatus}
+                </pre>
               </div>
             </div>
           </div>
@@ -1378,86 +1390,65 @@ function BackupView({ serverStatus, addToast }) {
     try {
       const data = await apiFetch('/api/backup/full', { method: 'POST' });
       setOutput(data.output || data.message || 'Concluído.');
-      if (data.ok) addToast('Backup concluído com sucesso!', 'success');
-      else addToast(data.error || 'Falha ao executar backup.', 'error');
+      if (data.ok) addToast('Backup concluído!', 'success');
+      else addToast(data.error || 'Falha no backup.', 'error');
     } catch {
       setOutput('Erro de processamento no servidor remoto.');
-      addToast('Erro ao realizar o backup.', 'error');
+      addToast('Erro no backup.', 'error');
     }
     setLoading(false);
   };
 
   return (
-    <div className="space-y-6">
-      {/* Action panel */}
-      <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-6 rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-base font-bold tracking-tight google-sans">Sincronização de Backups</h2>
-          <p className="text-xs text-[var(--md-sys-color-on-surface-variant)] mt-1">
-            Executa a sincronização completa das mídias locais e nuvem (iCloud/Storage).
-          </p>
+    <div className="space-y-4 text-xs">
+      <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-[var(--md-sys-color-primary)]">cloud_sync</span>
+          <span className="font-semibold text-xs">Backup Geral</span>
         </div>
-        <button onClick={runBackup} disabled={loading} className="btn-primary py-2.5 px-6 rounded-xl text-xs font-bold flex items-center gap-1.5 h-11">
+        <button onClick={runBackup} disabled={loading} className="btn-primary py-2 px-4 rounded-xl font-bold flex items-center gap-1">
           {loading ? (
-            <>
-              <span className="material-symbols-outlined animate-spin text-[18px]">autorenew</span>
-              <span>Executando Backup...</span>
-            </>
+            <span className="animate-spin material-symbols-outlined text-base">autorenew</span>
           ) : (
             <>
-              <span className="material-symbols-outlined text-[18px]">cloud_sync</span>
-              <span>Iniciar Backup</span>
+              <span className="material-symbols-outlined text-base">play_arrow</span>
+              <span>Iniciar</span>
             </>
           )}
         </button>
       </div>
 
-      {/* Split layout: Disks & Output Console */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Connected Disks */}
-        <div className="space-y-3">
-          <h3 className="text-xs font-bold text-[var(--md-sys-color-on-surface-variant)] uppercase tracking-wider px-1">Espaço de Armazenamento</h3>
-          {serverStatus?.disks && serverStatus.disks.length > 0 ? (
-            <div className="space-y-3">
-              {serverStatus.disks.map((d, idx) => (
-                <div key={idx} className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-2 text-xs">
-                  <div className="flex justify-between font-medium">
-                    <span className="truncate">{d.mount}</span>
-                    <span className="text-[var(--md-sys-color-on-surface-variant)]">{d.used} montado em {d.total}</span>
-                  </div>
-                  <div className="w-full bg-[var(--md-sys-color-surface-variant)] h-1.5 rounded-full overflow-hidden">
-                    <div 
-                      className="bg-[var(--md-sys-color-primary)] h-full transition-all" 
-                      style={{ width: `${d.percent}%` }}
-                    />
-                  </div>
-                  <div className="flex justify-between text-[10px] text-[var(--md-sys-color-on-surface-variant)]">
-                    <span className="font-mono">{d.filesystem}</span>
-                    <span>{d.percent}% Usado</span>
-                  </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Storage */}
+        {serverStatus?.disks && serverStatus.disks.length > 0 && (
+          <div className="space-y-3">
+            {serverStatus.disks.map((d, idx) => (
+              <div key={idx} className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-3 rounded-2xl space-y-1.5">
+                <div className="flex justify-between font-medium">
+                  <span className="truncate">{d.mount}</span>
+                  <span className="text-[var(--md-sys-color-on-surface-variant)]">{d.used} / {d.total}</span>
                 </div>
-              ))}
+                <div className="w-full bg-[var(--md-sys-color-surface-variant)] h-1 rounded-full overflow-hidden">
+                  <div 
+                    className="bg-[var(--md-sys-color-primary)] h-full transition-all" 
+                    style={{ width: `${d.percent}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Console */}
+        <div className="flex flex-col bg-black text-green-400 p-3 rounded-2xl font-mono text-[11px] min-h-[150px] max-h-[250px] overflow-auto">
+          {loading ? (
+            <div className="flex items-center gap-2 animate-pulse">
+              <span className="animate-spin material-symbols-outlined text-sm">sync</span>
+              <span>Sincronizando...</span>
             </div>
           ) : (
-            <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-6 rounded-2xl text-center text-xs text-[var(--md-sys-color-on-surface-variant)]">
-              Sem dados de armazenamento.
-            </div>
+            <pre className="whitespace-pre-wrap">{output || 'Logs do backup...'}</pre>
           )}
-        </div>
-
-        {/* Live Output Console */}
-        <div className="space-y-3 flex flex-col">
-          <h3 className="text-xs font-bold text-[var(--md-sys-color-on-surface-variant)] uppercase tracking-wider px-1">Saída do Processo</h3>
-          <div className="flex-1 min-h-[220px] bg-black text-green-400 p-4 rounded-2xl font-mono text-xs overflow-auto max-h-[300px]">
-            {loading ? (
-              <div className="flex items-center gap-2 animate-pulse">
-                <span className="animate-spin material-symbols-outlined text-sm">sync</span>
-                <span>Processando backups... (Isso pode demorar alguns minutos)</span>
-              </div>
-            ) : (
-              <pre className="whitespace-pre-wrap">{output || 'Nenhum log de processo de backup recente.'}</pre>
-            )}
-          </div>
         </div>
       </div>
     </div>
@@ -1468,7 +1459,6 @@ function BackupView({ serverStatus, addToast }) {
 function UsersView({ addToast }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
-  
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
 
@@ -1479,10 +1469,10 @@ function UsersView({ addToast }) {
       if (data.ok) {
         setUsers(data.users || []);
       } else {
-        addToast(data.error || 'Erro ao carregar usuários.', 'error');
+        addToast('Erro ao carregar usuários.', 'error');
       }
     } catch {
-      addToast('Erro ao obter dados de usuários.', 'error');
+      addToast('Erro de rede.', 'error');
     }
     setLoading(false);
   }, [addToast]);
@@ -1502,12 +1492,12 @@ function UsersView({ addToast }) {
         body: JSON.stringify({ username: username.trim(), password: password.trim() })
       });
       if (data.ok) {
-        addToast(`Usuário ${username} adicionado/atualizado!`, 'success');
+        addToast(`Usuário salvo!`, 'success');
         setUsername('');
         setPassword('');
         fetchUsers();
       } else {
-        addToast(data.error || 'Erro ao salvar usuário.', 'error');
+        addToast(data.error || 'Erro ao salvar.', 'error');
       }
     } catch {
       addToast('Erro de conexão.', 'error');
@@ -1517,7 +1507,7 @@ function UsersView({ addToast }) {
 
   const deleteUser = async (name) => {
     if (name === 'admin') return;
-    if (!window.confirm(`Deseja realmente remover o usuário ${name}?`)) return;
+    if (!window.confirm(`Deseja remover ${name}?`)) return;
 
     setLoading(true);
     try {
@@ -1525,10 +1515,10 @@ function UsersView({ addToast }) {
         method: 'DELETE'
       });
       if (data.ok) {
-        addToast(`Usuário ${name} excluído!`, 'success');
+        addToast(`Usuário removido!`, 'success');
         fetchUsers();
       } else {
-        addToast(data.error || 'Erro ao excluir.', 'error');
+        addToast('Erro ao excluir.', 'error');
       }
     } catch {
       addToast('Erro de conexão.', 'error');
@@ -1537,78 +1527,63 @@ function UsersView({ addToast }) {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-xs">
-      {/* User list */}
-      <div className="space-y-3">
-        <h3 className="text-xs font-bold text-[var(--md-sys-color-on-surface-variant)] uppercase tracking-wider px-1">Gestão de Contas</h3>
-        <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] rounded-2xl overflow-hidden">
-          {loading && users.length === 0 ? (
-            <div className="p-6 text-center text-[var(--md-sys-color-on-surface-variant)]">Carregando usuários...</div>
-          ) : (
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-[var(--md-sys-color-surface-variant)] border-b border-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)] font-semibold">
-                  <th className="text-left py-3 px-4">Nome de Usuário</th>
-                  <th className="text-left py-3 px-4">Senha</th>
-                  <th className="text-right py-3 px-4">Ações</th>
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
+      <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] rounded-2xl overflow-hidden">
+        {loading && users.length === 0 ? (
+          <div className="p-6 text-center">Carregando...</div>
+        ) : (
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-[var(--md-sys-color-surface-variant)] border-b border-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)]">
+                <th className="text-left py-2 px-3 font-semibold">Usuário</th>
+                <th className="text-right py-2 px-3 font-semibold">Ação</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--md-sys-color-surface-variant)]">
+              {users.map((u, idx) => (
+                <tr key={idx} className="hover:bg-[var(--md-sys-color-surface-variant)]/30 transition-colors">
+                  <td className="py-2 px-3 font-mono font-medium">{u.username}</td>
+                  <td className="py-2 px-3 text-right">
+                    {u.username !== 'admin' ? (
+                      <button onClick={() => deleteUser(u.username)} className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-error)]">
+                        <span className="material-symbols-outlined text-[16px]">delete</span>
+                      </button>
+                    ) : (
+                      <span className="text-[10px] text-[var(--md-sys-color-on-surface-variant)] italic pr-2 select-none">Mestre</span>
+                    )}
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--md-sys-color-surface-variant)]">
-                {users.map((u, idx) => (
-                  <tr key={idx} className="hover:bg-[var(--md-sys-color-surface-variant)]/50 transition-colors">
-                    <td className="py-3 px-4 font-mono font-medium text-[var(--md-sys-color-on-surface)]">{u.username}</td>
-                    <td className="py-3 px-4 font-mono text-[var(--md-sys-color-on-surface-variant)]">••••••••</td>
-                    <td className="py-3 px-4 text-right">
-                      {u.username !== 'admin' ? (
-                        <button onClick={() => deleteUser(u.username)} title="Remover" className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-error)]">
-                          <span className="material-symbols-outlined text-[16px]">delete</span>
-                        </button>
-                      ) : (
-                        <span className="text-[10px] text-[var(--md-sys-color-on-surface-variant)] italic pr-2 select-none">Mestre</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
-      {/* Add form */}
-      <div className="space-y-3">
-        <h3 className="text-xs font-bold text-[var(--md-sys-color-on-surface-variant)] uppercase tracking-wider px-1">Novo / Atualizar Usuário</h3>
-        <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-6 rounded-2xl">
-          <form onSubmit={addUser} className="space-y-4">
-            <div>
-              <label className="block text-[10px] font-bold text-[var(--md-sys-color-on-surface-variant)] uppercase tracking-wider mb-1.5 px-1">Nome</label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="ex: rodrigo"
-                disabled={loading}
-                required
-                className="w-full bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-4 py-2.5 outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] transition-all"
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] font-bold text-[var(--md-sys-color-on-surface-variant)] uppercase tracking-wider mb-1.5 px-1">Senha</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Senha de acesso"
-                disabled={loading}
-                required
-                className="w-full bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-4 py-2.5 outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] transition-all"
-              />
-            </div>
-            <button type="submit" disabled={loading || !username.trim() || !password.trim()} className="w-full btn-primary py-2.5 rounded-xl font-bold flex items-center justify-center gap-1.5 h-11">
-              Salvar Usuário
-            </button>
-          </form>
-        </div>
+      <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl">
+        <form onSubmit={addUser} className="space-y-3">
+          <input
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Usuário"
+            disabled={loading}
+            required
+            className="w-full bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3 py-2 outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] text-xs"
+          />
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Senha"
+            disabled={loading}
+            required
+            className="w-full bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3 py-2 outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] text-xs"
+          />
+          <button type="submit" disabled={loading} className="w-full btn-primary py-2 px-4 rounded-xl font-bold flex items-center justify-center gap-1.5">
+            <span className="material-symbols-outlined text-sm">save</span>
+            <span>Salvar</span>
+          </button>
+        </form>
       </div>
     </div>
   );
@@ -1622,18 +1597,18 @@ function MaintenanceView({ serverStatus, addToast, fetchStatus }) {
   const [vpnStatus, setVpnStatus] = useState('');
 
   const runMaintenance = async (action, title) => {
-    if (!window.confirm(`Deseja realmente executar a manutenção: ${title}?`)) return;
+    if (!window.confirm(`Executar: ${title}?`)) return;
 
     setLoading(true);
     setOutput('');
     try {
       const data = await apiFetch(`/api/maintenance/${action}`, { method: 'POST' });
       setOutput(data.output || data.message || 'Concluído.');
-      if (data.ok) addToast(`${title} executada com sucesso!`, 'success');
-      else addToast(data.error || 'Falha ao executar.', 'error');
+      if (data.ok) addToast(`${title} executada!`, 'success');
+      else addToast('Falha ao executar.', 'error');
     } catch {
       setOutput('Erro de conexão com o servidor.');
-      addToast('Erro ao realizar a manutenção.', 'error');
+      addToast('Erro ao realizar manutenção.', 'error');
     }
     setLoading(false);
   };
@@ -1650,22 +1625,22 @@ function MaintenanceView({ serverStatus, addToast, fetchStatus }) {
   }, []);
 
   const toggleVpn = async (action) => {
-    if (!window.confirm(`Deseja realmente ${action === 'start' ? 'ativar' : 'desativar'} a VPN local?`)) return;
+    if (!window.confirm(`Deseja ${action === 'start' ? 'ativar' : 'desativar'} a VPN?`)) return;
     
     setVpnLoading(true);
     try {
       const data = await apiFetch('/api/services', {
         method: 'POST',
-        body: JSON.stringify({ service: 'ttyd', action: action === 'start' ? 'start' : 'stop' }) // Using service command structure
+        body: JSON.stringify({ service: 'ttyd', action: action === 'start' ? 'start' : 'stop' })
       });
       if (data.ok) {
-        addToast(`Comando VPN (${action}) enviado!`, 'success');
+        addToast(`Comando VPN enviado!`, 'success');
         setTimeout(() => {
           getVpnStatus();
           fetchStatus();
         }, 5000);
       } else {
-        addToast(data.error || 'Erro ao executar.', 'error');
+        addToast('Erro ao executar.', 'error');
       }
     } catch {
       addToast('Erro de rede.', 'error');
@@ -1678,57 +1653,64 @@ function MaintenanceView({ serverStatus, addToast, fetchStatus }) {
   }, [getVpnStatus]);
 
   return (
-    <div className="space-y-6 text-xs">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div className="space-y-4 text-xs">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* VPN Card & Maintenance buttons */}
         <div className="space-y-4">
-          <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-6 rounded-2xl space-y-4">
-            <h3 className="text-sm font-bold tracking-tight google-sans">VPN Tailscale</h3>
+          <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-xs flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[var(--md-sys-color-primary)]">vpn_lock</span>
+                VPN Tailscale
+              </span>
+              <button onClick={getVpnStatus} disabled={vpnLoading} className="w-7 h-7 rounded-lg hover:bg-black/5 flex items-center justify-center">
+                <span className="material-symbols-outlined text-base">refresh</span>
+              </button>
+            </div>
             <div className="flex gap-2">
-              <button onClick={() => toggleVpn('start')} disabled={vpnLoading} className="btn-primary py-2 px-4 rounded-xl text-xs font-bold h-10 flex-1">
-                Ligar VPN
+              <button onClick={() => toggleVpn('start')} disabled={vpnLoading} className="btn-primary py-2 px-3 rounded-xl font-bold flex-1 flex items-center justify-center gap-1">
+                <span className="material-symbols-outlined text-sm">vpn_lock</span>
+                <span>Ligar</span>
               </button>
-              <button onClick={() => toggleVpn('stop')} disabled={vpnLoading} className="btn-danger py-2 px-4 rounded-xl text-xs font-bold h-10 flex-1">
-                Desligar VPN
-              </button>
-              <button onClick={getVpnStatus} disabled={vpnLoading} className="btn-ghost py-2 px-3 rounded-xl h-10">
-                <span className="material-symbols-outlined text-[18px]">refresh</span>
+              <button onClick={() => toggleVpn('stop')} disabled={vpnLoading} className="btn-danger py-2 px-3 rounded-xl font-bold flex-1 flex items-center justify-center gap-1">
+                <span className="material-symbols-outlined text-sm">link_off</span>
+                <span>Desligar</span>
               </button>
             </div>
 
-            <pre className="p-4 bg-black text-green-400 font-mono text-[10px] rounded-xl max-h-[150px] overflow-auto whitespace-pre-wrap">
-              {vpnLoading ? 'Obtendo status da VPN...' : vpnStatus}
+            <pre className="p-3 bg-black text-green-400 font-mono text-[10px] rounded-xl max-h-[100px] overflow-auto whitespace-pre-wrap">
+              {vpnLoading ? 'Carregando status...' : vpnStatus}
             </pre>
           </div>
 
-          <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-6 rounded-2xl space-y-4">
-            <h3 className="text-sm font-bold tracking-tight google-sans">Tarefas do Servidor</h3>
+          <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-3">
+            <span className="font-semibold text-xs flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-[var(--md-sys-color-primary)]">build</span>
+              Manutenção
+            </span>
             <div className="flex gap-2">
-              <button onClick={() => runMaintenance('clean', 'Limpar Lixo')} disabled={loading} className="btn-ghost py-2.5 px-4 rounded-xl text-xs font-bold flex-1 flex items-center justify-center gap-1.5 h-11 text-[var(--md-sys-color-error)] border-[var(--md-sys-color-error)]/20 hover:bg-[var(--md-sys-color-error-container)]">
-                <span className="material-symbols-outlined text-[16px]">delete_sweep</span>
-                <span>Limpar Lixo</span>
+              <button onClick={() => runMaintenance('clean', 'Limpar Lixo')} disabled={loading} className="btn-ghost py-2 px-3 rounded-xl font-bold flex-1 flex items-center justify-center gap-1 text-[var(--md-sys-color-error)] border-[var(--md-sys-color-error)]/20 hover:bg-[var(--md-sys-color-error-container)]">
+                <span className="material-symbols-outlined text-sm">delete_sweep</span>
+                <span>Limpar</span>
               </button>
-              <button onClick={() => runMaintenance('update', 'Atualizar Servidor')} disabled={loading} className="btn-ghost py-2.5 px-4 rounded-xl text-xs font-bold flex-1 flex items-center justify-center gap-1.5 h-11">
-                <span className="material-symbols-outlined text-[16px]">system_update</span>
-                <span>Atualizar OS</span>
+              <button onClick={() => runMaintenance('update', 'Atualizar Servidor')} disabled={loading} className="btn-ghost py-2 px-3 rounded-xl font-bold flex-1 flex items-center justify-center gap-1">
+                <span className="material-symbols-outlined text-sm">system_update</span>
+                <span>Atualizar</span>
               </button>
             </div>
           </div>
         </div>
 
         {/* Live Output */}
-        <div className="flex flex-col space-y-3">
-          <h3 className="text-xs font-bold text-[var(--md-sys-color-on-surface-variant)] uppercase tracking-wider px-1">Saída do Processo</h3>
-          <div className="flex-grow min-h-[300px] bg-black text-green-400 p-4 rounded-2xl font-mono text-xs overflow-auto max-h-[400px]">
-            {loading ? (
-              <div className="flex items-center gap-2 animate-pulse">
-                <span className="animate-spin material-symbols-outlined text-sm">sync</span>
-                <span>Executando manutenção... (Isso pode demorar um pouco)</span>
-              </div>
-            ) : (
-              <pre className="whitespace-pre-wrap">{output || 'Nenhum log de manutenção recente.'}</pre>
-            )}
-          </div>
+        <div className="flex flex-col bg-black text-green-400 p-3 rounded-2xl font-mono text-[11px] min-h-[200px] max-h-[300px] overflow-auto">
+          {loading ? (
+            <div className="flex items-center gap-2 animate-pulse">
+              <span className="animate-spin material-symbols-outlined text-sm">sync</span>
+              <span>Executando...</span>
+            </div>
+          ) : (
+            <pre className="whitespace-pre-wrap">{output || 'Saída do console...'}</pre>
+          )}
         </div>
       </div>
     </div>

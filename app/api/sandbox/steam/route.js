@@ -6,8 +6,8 @@ export async function POST(request) {
     async () => {
       await runSSH("sudo docker rm -f srv_steam_sandbox");
       await runSSH(
-        "sudo docker run -d --rm --name srv_steam_sandbox " +
-        "-p 8083:8083 -p 5900:5900 josh5/steam-headless:latest"
+        "sudo docker run -d --privileged --rm --name srv_steam_sandbox " +
+        "-p 8083:8083 -p 5900:5900 -v /dev:/dev josh5/steam-headless:latest"
       );
       const host = getTargetHost();
       return {
