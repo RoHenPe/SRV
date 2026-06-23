@@ -28,3 +28,4 @@ implementation_plan.md
 
 # Vercel
 .vercel
+.env*
