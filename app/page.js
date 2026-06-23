@@ -111,8 +111,8 @@ export default function DashboardPage() {
     { id: 'steam', name: 'Steam', icon: 'sports_esports', type: 'sandbox', port: 8083 },
     { id: 'filebrowser', name: 'Arquivos', icon: 'folder_open', type: 'sandbox', port: 8089 },
     { id: 'kdenlive', name: 'Kdenlive', icon: 'movie', type: 'sandbox', port: 3005 },
-    { id: 'terminal', name: 'Terminal Sandbox', icon: 'terminal', type: 'sandbox', port: 7682 },
-    { id: 'ttyd', name: 'Console Real', icon: 'wysiwyg', type: 'service', serviceName: 'ttyd', port: 7681 },
+    { id: 'terminal', name: 'Terminal (Sandbox)', icon: 'terminal', type: 'sandbox', port: 7682 },
+    { id: 'ttyd', name: 'Terminal (Servidor)', icon: 'wysiwyg', type: 'service', serviceName: 'ttyd', port: 7681 },
     { id: 'cockpit', name: 'Cockpit', icon: 'web', type: 'static', port: 9090, protocol: 'https:' },
     { id: 'cups', name: 'Impressora', icon: 'print', type: 'service', serviceName: 'cups', port: 631 },
     { id: 'scanner', name: 'Scanner', icon: 'document_scanner', type: 'service', serviceName: 'scanner', port: 8080 },
@@ -236,7 +236,7 @@ export default function DashboardPage() {
     setIframeUrl('');
     setMobileMenuOpen(false);
 
-    const host = window.location.hostname;
+    const host = serverStatus?.host || window.location.hostname;
     const protocol = app.protocol || 'http:';
     const path = app.path || '';
     const targetUrl = `${protocol}//${host}:${app.port}${path}`;
@@ -398,10 +398,6 @@ export default function DashboardPage() {
   }
 
   const isOnline = serverStatus?.online;
-  const systemInfo = serverStatus?.online ? {
-    uptime: serverStatus.uptime,
-    load: `CPU ${serverStatus.cpu}% | RAM ${serverStatus.memory?.percent}%`,
-  } : null;
 
   return (
     <div className="flex flex-col md:flex-row h-screen bg-[var(--md-sys-color-background)] overflow-hidden text-[var(--md-sys-color-on-background)] relative">
@@ -417,7 +413,19 @@ export default function DashboardPage() {
                 <div className="w-8 h-8 rounded-xl bg-[var(--md-sys-color-primary-container)] flex items-center justify-center">
                   <span className="material-symbols-outlined text-[var(--md-sys-color-on-primary-container)] text-lg icon-filled">dns</span>
                 </div>
-                <span className="font-bold tracking-tight text-sm google-sans">SRV</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold tracking-tight text-sm google-sans">SRV</span>
+                  <div 
+                    title={isOnline === false ? 'Offline' : isOnline ? 'Online' : 'Checking'}
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      isOnline === false 
+                        ? 'bg-[var(--md-sys-color-error)]' 
+                        : isOnline 
+                        ? 'bg-[var(--md-sys-color-tertiary)] animate-pulse' 
+                        : 'bg-[var(--md-sys-color-warning)]'
+                    }`}
+                  />
+                </div>
               </div>
               <button onClick={() => setMobileMenuOpen(false)} className="md:hidden text-[var(--md-sys-color-on-surface-variant)]">
                 <span className="material-symbols-outlined">close</span>
@@ -500,50 +508,6 @@ export default function DashboardPage() {
 
         {/* ─── MAIN WORKSPACE ─── */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Top Header */}
-          <header className={`h-14 border-b border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] px-6 flex items-center justify-between flex-shrink-0 ${
-            activeTab === 'app' ? 'hidden md:flex' : 'flex'
-          }`}>
-            <div className="flex items-center gap-3">
-              <button onClick={() => setMobileMenuOpen(true)} className="md:hidden text-[var(--md-sys-color-on-surface-variant)]">
-                <span className="material-symbols-outlined">menu</span>
-              </button>
-              <span className="text-sm font-semibold google-sans capitalize">
-                {activeTab === 'app' ? activeApp?.name : activeTab}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-3">
-              {/* System Info Badges (hidden on mobile) */}
-              {systemInfo && (
-                <div className="hidden sm:flex items-center gap-2">
-                  <div className="flex items-center gap-1 bg-[var(--md-sys-color-surface-variant)] px-2.5 py-1 rounded-full text-[10px] font-medium text-[var(--md-sys-color-on-surface-variant)]">
-                    <span className="material-symbols-outlined text-[12px]">schedule</span>
-                    <span>{systemInfo.uptime}</span>
-                  </div>
-                  <div className="flex items-center gap-1 bg-[var(--md-sys-color-surface-variant)] px-2.5 py-1 rounded-full text-[10px] font-medium text-[var(--md-sys-color-on-surface-variant)]">
-                    <span className="material-symbols-outlined text-[12px]">analytics</span>
-                    <span>{systemInfo.load}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Server Online Status */}
-              <div className={`flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-bold ${
-                isOnline === false 
-                  ? 'bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)]' 
-                  : isOnline 
-                  ? 'bg-[var(--md-sys-color-tertiary-container)] text-[var(--md-sys-color-on-tertiary-container)]' 
-                  : 'bg-[var(--md-sys-color-warning-container)] text-[var(--md-sys-color-on-warning-container)]'
-              }`}>
-                <span className="material-symbols-outlined text-[10px] icon-filled">
-                  {isOnline === false ? 'offline_bolt' : isOnline ? 'cloud_done' : 'sync'}
-                </span>
-                <span className="hidden xs:inline">{isOnline === false ? 'Offline' : isOnline ? 'Online' : 'Checking'}</span>
-              </div>
-            </div>
-          </header>
-
           {/* Content Pane */}
           <main className={`flex-1 overflow-y-auto relative ${
             activeTab === 'app' ? 'p-0' : 'p-4 md:p-6'
@@ -673,8 +637,18 @@ function HomeView({ apps, selectApp, serverStatus, addToast, fetchStatus, isRunn
       <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <span className="material-symbols-outlined text-lg text-[var(--md-sys-color-primary)]">dns</span>
-          <span className="text-xs font-medium text-[var(--md-sys-color-on-surface-variant)] truncate">
+          <span className="text-xs font-medium text-[var(--md-sys-color-on-surface-variant)] truncate flex items-center gap-2">
             {serverStatus?.online ? `${serverStatus.host}` : 'Servidor Offline'}
+            <span 
+              title={serverStatus?.online === false ? 'Offline' : serverStatus?.online ? 'Online' : 'Checking'}
+              className={`w-1.5 h-1.5 rounded-full inline-block ${
+                serverStatus?.online === false 
+                  ? 'bg-[var(--md-sys-color-error)]' 
+                  : serverStatus?.online 
+                  ? 'bg-[var(--md-sys-color-tertiary)] animate-pulse' 
+                  : 'bg-[var(--md-sys-color-warning)]'
+              }`}
+            />
           </span>
         </div>
         <div className="flex gap-1.5">
