@@ -235,8 +235,13 @@ export default function DashboardPage() {
     setActiveApp(app);
     setIframeUrl('');
     setMobileMenuOpen(false);
-
-    const host = serverStatus?.host || window.location.hostname;
+    const isIPOrLocalhost = (h) => {
+      if (h === 'localhost' || h === '127.0.0.1') return true;
+      return /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(h) || h.endsWith('.local');
+    };
+    const host = isIPOrLocalhost(window.location.hostname) 
+      ? window.location.hostname 
+      : (serverStatus?.host || window.location.hostname);
     const protocol = app.protocol || 'http:';
     const path = app.path || '';
     const targetUrl = `${protocol}//${host}:${app.port}${path}`;
