@@ -443,9 +443,9 @@ export default function DashboardPage() {
   const isOnline = serverStatus?.online;
 
   return (
-    <div className="flex flex-col h-screen bg-[var(--md-sys-color-background)] overflow-hidden text-[var(--md-sys-color-on-background)] relative">
+    <div className="flex flex-col h-[100dvh] bg-[var(--md-sys-color-background)] overflow-hidden text-[var(--md-sys-color-on-background)] relative">
       {/* Barra de Cabeçalho Superior para Celular */}
-      <header className="md:hidden h-14 border-b border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex items-center justify-between px-4 flex-shrink-0 z-30">
+      <header className="md:hidden h-[calc(3.5rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] border-b border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex items-center justify-between px-4 flex-shrink-0 z-30">
         <button 
           onClick={() => setMobileMenuOpen(true)} 
           className="w-9 h-9 rounded-xl flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)] hover:bg-black/5"
@@ -453,18 +453,7 @@ export default function DashboardPage() {
           <span className="material-symbols-outlined text-xl">menu</span>
         </button>
         <span className="font-bold tracking-tight text-sm google-sans">SRV</span>
-        <div className="flex items-center gap-2">
-          <div 
-            title={isOnline === false ? 'Offline' : isOnline ? 'Online' : 'Checking'}
-            className={`w-2 h-2 rounded-full ${
-              isOnline === false 
-                ? 'bg-[var(--md-sys-color-error)] animate-pulse' 
-                : isOnline 
-                ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' 
-                : 'bg-amber-500 animate-pulse'
-            }`}
-          />
-        </div>
+        <div className="w-9 h-9" />
       </header>
 
       <div className="flex flex-1 h-full overflow-hidden relative">
@@ -472,21 +461,11 @@ export default function DashboardPage() {
         <aside className={`border-r border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex flex-col justify-between flex-shrink-0 z-40 transition-all duration-200 ${
           mobileMenuOpen ? 'fixed inset-y-0 left-0 w-16' : 'hidden md:flex w-16'
         }`}>
-          <div className="flex flex-col flex-1 overflow-y-auto">
+          <div className="flex flex-col flex-1 overflow-y-auto pt-[env(safe-area-inset-top)]">
             {/* Brand header */}
             <div className="flex items-center justify-center py-4 border-b border-[var(--md-sys-color-surface-variant)] relative">
               <div className="w-10 h-10 rounded-xl bg-[var(--md-sys-color-primary-container)] flex items-center justify-center relative">
                 <span className="material-symbols-outlined text-[var(--md-sys-color-on-primary-container)] text-lg icon-filled">dns</span>
-                <div 
-                  title={isOnline === false ? 'Offline' : isOnline ? 'Online' : 'Checking'}
-                  className={`w-2 h-2 rounded-full absolute -top-0.5 -right-0.5 border border-[var(--md-sys-color-surface)] ${
-                    isOnline === false 
-                      ? 'bg-[var(--md-sys-color-error)]' 
-                      : isOnline 
-                      ? 'bg-[var(--md-sys-color-tertiary)] animate-pulse' 
-                      : 'bg-[var(--md-sys-color-warning)]'
-                  }`}
-                />
               </div>
               <button onClick={() => setMobileMenuOpen(false)} className="md:hidden absolute top-2 right-2 text-[var(--md-sys-color-on-surface-variant)]">
                 <span className="material-symbols-outlined text-xs">close</span>
@@ -653,7 +632,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Bottom Navigation for Mobile */}
-      <nav className={`md:hidden h-14 border-t border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex items-center justify-around flex-shrink-0 z-40 ${
+      <nav className={`md:hidden border-t border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex items-center justify-around flex-shrink-0 z-40 pb-[env(safe-area-inset-bottom)] pt-2 ${
         activeTab === 'app' ? 'hidden' : 'flex'
       }`}>
         {[
@@ -978,11 +957,9 @@ function DockerView({ addToast }) {
                       <tr key={idx} className="hover:bg-[var(--md-sys-color-surface-variant)]/30 transition-colors">
                         <td className="py-2.5 px-4 font-mono truncate max-w-[150px]">{c.Names}</td>
                         <td className="py-2.5 px-4">
-                          <div className="flex items-center">
-                            <span className={`w-2 h-2 rounded-full ${
-                              active ? 'bg-[var(--md-sys-color-tertiary)] animate-pulse' : 'bg-[var(--md-sys-color-error)]'
-                            }`} />
-                          </div>
+                          <span className={active ? 'text-[var(--md-sys-color-tertiary)] font-medium' : 'text-[var(--md-sys-color-error)] font-medium'}>
+                            {active ? 'Ativo' : 'Parado'}
+                          </span>
                         </td>
                         <td className="py-2.5 px-4 hidden lg:table-cell font-mono text-[10px] text-[var(--md-sys-color-on-surface-variant)] max-w-[200px] truncate">{c.Ports || '—'}</td>
                         <td className="py-2.5 px-4 text-right space-x-0.5 whitespace-nowrap">
