@@ -113,8 +113,8 @@ export default function DashboardPage() {
     { id: 'kdenlive', name: 'Kdenlive', icon: 'movie', type: 'sandbox', port: 3005 },
     { id: 'terminal', name: 'Terminal (Sandbox)', icon: 'terminal', type: 'sandbox', port: 7682 },
     { id: 'ttyd', name: 'Terminal (Servidor)', icon: 'wysiwyg', type: 'service', serviceName: 'ttyd', port: 7681 },
-    { id: 'cockpit', name: 'Cockpit', icon: 'web', type: 'static', port: 9090, protocol: 'https:' },
-    { id: 'cups', name: 'Impressora', icon: 'print', type: 'service', serviceName: 'cups', port: 631 },
+    { id: 'cockpit', name: 'Cockpit', icon: 'web', type: 'static', port: 9090, protocol: 'https:', skipIframe: true },
+    { id: 'cups', name: 'Impressora', icon: 'print', type: 'service', serviceName: 'cups', port: 631, skipIframe: true },
     { id: 'scanner', name: 'Scanner', icon: 'document_scanner', type: 'service', serviceName: 'scanner', port: 8080 },
     { id: 'metabase', name: 'BI Metabase', icon: 'analytics', type: 'service', serviceName: 'portal', port: 3003 },
     { id: 'jupyter', name: 'Jupyter Spark', icon: 'science', type: 'service', serviceName: 'portal', port: 8888 },
@@ -601,25 +601,50 @@ export default function DashboardPage() {
                 </div>
                 <div className="flex-1 bg-[var(--md-sys-color-background)] relative">
                   {iframeUrl ? (
-                    <>
-                      <iframe src={iframeUrl} className="w-full h-full border-0" allow="clipboard-read; clipboard-write; fullscreen" />
-                      {typeof window !== 'undefined' && window.location.protocol === 'https:' && (
-                        <div className="absolute bottom-4 left-4 right-4 bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)] border border-[var(--md-sys-color-error)]/20 p-3 rounded-xl text-xs flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg z-10 animate-fade-in">
-                          <span className="font-medium text-left">
-                            ⚠️ Bloqueio de conteúdo misto (HTTPS para HTTP). Se o aplicativo não carregar:
+                    activeApp.skipIframe ? (
+                      <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center space-y-4 max-w-md mx-auto">
+                        <div className="w-16 h-16 rounded-full bg-[var(--md-sys-color-primary-container)] flex items-center justify-center text-[var(--md-sys-color-on-primary-container)] animate-pulse">
+                          <span className="material-symbols-outlined text-3xl">
+                            {activeApp.icon}
                           </span>
-                          <a 
-                            href={iframeUrl} 
-                            target="_blank" 
-                            rel="noopener noreferrer" 
-                            className="bg-[var(--md-sys-color-error)] text-white font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 hover:opacity-90 transition-opacity whitespace-nowrap"
-                          >
-                            <span className="material-symbols-outlined text-sm">open_in_new</span>
-                            <span>Abrir em Nova Aba</span>
-                          </a>
                         </div>
-                      )}
-                    </>
+                        <h3 className="text-sm font-semibold text-[var(--md-sys-color-on-surface)]">
+                          {activeApp.name} está rodando!
+                        </h3>
+                        <p className="text-[11px] text-[var(--md-sys-color-on-surface-variant)] leading-relaxed">
+                          Por motivos de segurança e políticas anti-clickjacking do navegador, este serviço não pode ser embutido diretamente nesta página.
+                        </p>
+                        <a 
+                          href={iframeUrl} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="btn-primary py-2 px-5 rounded-xl font-bold flex items-center justify-center gap-1.5 text-xs shadow-md"
+                        >
+                          <span className="material-symbols-outlined text-sm">open_in_new</span>
+                          <span>Abrir em Nova Aba</span>
+                        </a>
+                      </div>
+                    ) : (
+                      <>
+                        <iframe src={iframeUrl} className="w-full h-full border-0" allow="clipboard-read; clipboard-write; fullscreen" />
+                        {typeof window !== 'undefined' && window.location.protocol === 'https:' && iframeUrl.startsWith('http://') && (
+                          <div className="absolute bottom-4 left-4 right-4 bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)] border border-[var(--md-sys-color-error)]/20 p-3 rounded-xl text-xs flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg z-10 animate-fade-in">
+                            <span className="font-medium text-left">
+                              ⚠️ Bloqueio de conteúdo misto (HTTPS para HTTP). Se o aplicativo não carregar:
+                            </span>
+                            <a 
+                              href={iframeUrl} 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              className="bg-[var(--md-sys-color-error)] text-white font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 hover:opacity-90 transition-opacity whitespace-nowrap"
+                            >
+                              <span className="material-symbols-outlined text-sm">open_in_new</span>
+                              <span>Abrir em Nova Aba</span>
+                            </a>
+                          </div>
+                        )}
+                      </>
+                    )
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-xs text-[var(--md-sys-color-on-surface-variant)]">
                       Iniciando aplicação...
