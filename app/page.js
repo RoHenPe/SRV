@@ -445,7 +445,9 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col h-[100dvh] bg-[var(--md-sys-color-background)] overflow-hidden text-[var(--md-sys-color-on-background)] relative">
       {/* Barra de Cabeçalho Superior para Celular */}
-      <header className="md:hidden h-[calc(3.5rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] border-b border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex items-center justify-between px-4 flex-shrink-0 z-30">
+      <header className={`md:hidden h-[calc(3.5rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] border-b border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex items-center justify-between pl-[calc(1rem+env(safe-area-inset-left))] pr-[calc(1rem+env(safe-area-inset-right))] flex-shrink-0 z-30 ${
+        activeTab === 'app' ? 'hidden' : 'flex'
+      }`}>
         <button 
           onClick={() => setMobileMenuOpen(true)} 
           className="w-9 h-9 rounded-xl flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)] hover:bg-black/5"
@@ -458,8 +460,8 @@ export default function DashboardPage() {
 
       <div className="flex flex-1 h-full overflow-hidden relative">
         {/* ─── SIDEBAR (Desktop/Mobile Collapsed) ────────────────────────────────── */}
-        <aside className={`border-r border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex flex-col justify-between flex-shrink-0 z-40 transition-all duration-200 ${
-          mobileMenuOpen ? 'fixed inset-y-0 left-0 w-16' : 'hidden md:flex w-16'
+        <aside className={`border-r border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex flex-col justify-between flex-shrink-0 z-40 transition-all duration-200 w-[calc(4rem+env(safe-area-inset-left))] pl-[env(safe-area-inset-left)] ${
+          mobileMenuOpen ? 'fixed inset-y-0 left-0' : 'hidden md:flex'
         }`}>
           <div className="flex flex-col flex-1 overflow-y-auto pt-[env(safe-area-inset-top)]">
             {/* Brand header */}
@@ -467,9 +469,6 @@ export default function DashboardPage() {
               <div className="w-10 h-10 rounded-xl bg-[var(--md-sys-color-primary-container)] flex items-center justify-center relative">
                 <span className="material-symbols-outlined text-[var(--md-sys-color-on-primary-container)] text-lg icon-filled">dns</span>
               </div>
-              <button onClick={() => setMobileMenuOpen(false)} className="md:hidden absolute top-2 right-2 text-[var(--md-sys-color-on-surface-variant)]">
-                <span className="material-symbols-outlined text-xs">close</span>
-              </button>
             </div>
 
             {/* Navigation Menu */}
@@ -484,11 +483,17 @@ export default function DashboardPage() {
               ].map((tab) => (
                 <button
                   key={tab.id}
-                  onClick={() => { setActiveTab(tab.id); setMobileMenuOpen(false); }}
+                  onClick={() => {
+                    if (activeApp) {
+                      closeActiveApp();
+                    }
+                    setActiveTab(tab.id);
+                    setMobileMenuOpen(false);
+                  }}
                   title={tab.name}
                   className={`w-10 h-10 flex flex-shrink-0 items-center justify-center rounded-xl transition-all ${
                     activeTab === tab.id
-                      ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] font-semibold'
+                      ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)]'
                       : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
                   }`}
                 >
@@ -533,7 +538,7 @@ export default function DashboardPage() {
         )}
 
         {/* ─── MAIN WORKSPACE ─── */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden pl-[env(safe-area-inset-left)] md:pl-0 pr-[env(safe-area-inset-right)]">
           {/* Content Pane */}
           <main className={`flex-1 overflow-y-auto relative ${
             activeTab === 'app' ? 'p-0' : 'p-4 md:p-6'
@@ -551,9 +556,19 @@ export default function DashboardPage() {
               <div className="w-full h-full flex flex-col bg-[var(--md-sys-color-surface)] md:border md:border-[var(--md-sys-color-surface-variant)] md:rounded-2xl overflow-hidden">
                 {/* App Iframe Controls */}
                 <div className="h-10 px-4 bg-[var(--md-sys-color-surface-variant)] flex items-center justify-between border-b border-[var(--md-sys-color-surface-variant)] flex-shrink-0 text-xs">
-                  <span className="font-mono text-[10px] text-[var(--md-sys-color-on-surface-variant)] truncate max-w-[150px] sm:max-w-md">
-                    {iframeUrl || 'Carregando...'}
-                  </span>
+                  <div className="flex items-center gap-2 max-w-[50%] sm:max-w-xs overflow-hidden">
+                    <button 
+                      onClick={closeActiveApp} 
+                      title="Voltar" 
+                      className="h-7 px-2 rounded-lg hover:bg-black/5 flex items-center gap-1 text-[var(--md-sys-color-on-surface-variant)] font-semibold flex-shrink-0"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">arrow_back</span>
+                      <span className="hidden sm:inline">Voltar</span>
+                    </button>
+                    <span className="font-mono text-[10px] text-[var(--md-sys-color-on-surface-variant)] truncate">
+                      {iframeUrl || 'Carregando...'}
+                    </span>
+                  </div>
                   <div className="flex items-center gap-1">
                     {iframeUrl && (
                       <a 
@@ -571,9 +586,6 @@ export default function DashboardPage() {
                     </button>
                     <button onClick={stopActiveAppContainer} title="Parar" className="w-7 h-7 rounded-lg hover:bg-black/5 flex items-center justify-center text-[var(--md-sys-color-error)]">
                       <span className="material-symbols-outlined text-[16px]">stop_circle</span>
-                    </button>
-                    <button onClick={closeActiveApp} title="Fechar" className="w-7 h-7 rounded-lg hover:bg-black/5 flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)]">
-                      <span className="material-symbols-outlined text-[16px]">close</span>
                     </button>
                   </div>
                 </div>
@@ -632,7 +644,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Bottom Navigation for Mobile */}
-      <nav className={`md:hidden border-t border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex items-center justify-around flex-shrink-0 z-40 pb-[env(safe-area-inset-bottom)] pt-2 ${
+      <nav className={`md:hidden border-t border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex items-center justify-around flex-shrink-0 z-40 pb-[env(safe-area-inset-bottom)] pt-2 pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] ${
         activeTab === 'app' ? 'hidden' : 'flex'
       }`}>
         {[
@@ -645,7 +657,12 @@ export default function DashboardPage() {
         ].map((tab) => (
           <button
             key={tab.id}
-            onClick={() => { setActiveTab(tab.id); }}
+            onClick={() => {
+              if (activeApp) {
+                closeActiveApp();
+              }
+              setActiveTab(tab.id);
+            }}
             className="flex items-center justify-center flex-1 py-2 text-[var(--md-sys-color-on-surface-variant)] hover:text-[var(--md-sys-color-primary)] transition-all"
           >
             <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
