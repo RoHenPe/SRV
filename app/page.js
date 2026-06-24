@@ -111,6 +111,8 @@ export default function DashboardPage() {
     { id: 'steam', name: 'Steam', icon: 'sports_esports', type: 'sandbox', port: 8083 },
     { id: 'filebrowser', name: 'Arquivos', icon: 'folder_open', type: 'sandbox', port: 8089 },
     { id: 'kdenlive', name: 'Kdenlive', icon: 'movie', type: 'sandbox', port: 3005 },
+    { id: 'neovim', name: 'Neovim', icon: 'edit_note', type: 'sandbox', port: 7683 },
+    { id: 'antigravity', name: 'Antigravity SSH', icon: 'vpn_key', type: 'sandbox', port: 2222, skipIframe: true },
     { id: 'terminal', name: 'Terminal (Sandbox)', icon: 'terminal', type: 'sandbox', port: 7682 },
     { id: 'ttyd', name: 'Terminal (Servidor)', icon: 'wysiwyg', type: 'service', serviceName: 'ttyd', port: 7681 },
     { id: 'cockpit', name: 'Cockpit', icon: 'web', type: 'static', port: 9090, protocol: 'https:', skipIframe: true },
@@ -119,6 +121,7 @@ export default function DashboardPage() {
     { id: 'metabase', name: 'BI Metabase', icon: 'analytics', type: 'service', serviceName: 'portal', port: 3003 },
     { id: 'jupyter', name: 'Jupyter Spark', icon: 'science', type: 'service', serviceName: 'portal', port: 8888 },
     { id: 'onlyoffice', name: 'Documentos', icon: 'description', type: 'service', serviceName: 'portal', port: 8086, path: '/example' },
+    { id: 'emulator', name: 'Android Emulator', icon: 'phone_android', type: 'service', serviceName: 'emulator', port: 6081 },
     { id: 'jarvis', name: 'Jarvis', icon: 'smart_toy', type: 'service', serviceName: 'jarvis', port: 3010 }
   ];
 
@@ -215,6 +218,8 @@ export default function DashboardPage() {
     if (!serverStatus?.runningContainers) return false;
     let containerName = `srv_${app.id}_sandbox`;
     if (app.id === 'filebrowser') containerName = 'srv_filebrowser';
+    else if (app.id === 'antigravity') containerName = 'srv_ag_sandbox';
+    else if (app.id === 'neovim') containerName = 'srv_nvim_sandbox';
     else if (app.id === 'jarvis') containerName = 'open-webui';
     else if (app.id === 'cups') containerName = 'cupsd';
     else if (app.id === 'scanner') containerName = 'scanservjs';
@@ -222,6 +227,7 @@ export default function DashboardPage() {
     else if (app.id === 'metabase') containerName = 'srv_metabase';
     else if (app.id === 'jupyter') containerName = 'srv_jupyter_spark';
     else if (app.id === 'onlyoffice') containerName = 'srv_onlyoffice';
+    else if (app.id === 'emulator') containerName = 'android-container';
     else if (app.type === 'static') return true;
 
     return serverStatus.runningContainers.some(c => 
@@ -319,6 +325,7 @@ export default function DashboardPage() {
       else if (app.id === 'metabase') isRunning = isContainerRunning('srv_metabase');
       else if (app.id === 'jupyter') isRunning = isContainerRunning('srv_jupyter_spark');
       else if (app.id === 'onlyoffice') isRunning = isContainerRunning('srv_onlyoffice');
+      else if (app.id === 'emulator') isRunning = isContainerRunning('android-container');
 
       if (isRunning) {
         setLaunching(true);
@@ -400,6 +407,8 @@ export default function DashboardPage() {
         endpoint = '/api/docker/stop';
         let name = `srv_${activeApp.id}_sandbox`;
         if (activeApp.id === 'filebrowser') name = 'srv_filebrowser';
+        else if (activeApp.id === 'antigravity') name = 'srv_ag_sandbox';
+        else if (activeApp.id === 'neovim') name = 'srv_nvim_sandbox';
         body = { name };
       } else if (activeApp.type === 'service') {
         endpoint = '/api/services';
@@ -511,32 +520,23 @@ export default function DashboardPage() {
                     <span>{tab.name}</span>
                   </button>
                 ))}
-              </div>
 
-              <div className="space-y-1">
-                <span className="px-4 text-[10px] font-bold text-[var(--md-sys-color-on-surface-variant)] tracking-wider uppercase block mb-2">Aplicações</span>
-                <div className="space-y-0.5 px-2">
-                  {apps.map((app) => {
-                    const active = isRunning(app);
-                    return (
-                      <button
-                        key={app.id}
-                        onClick={() => selectApp(app)}
-                        title={app.name}
-                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all ${
-                          activeTab === 'app' && activeApp?.id === app.id
-                            ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] font-semibold'
-                            : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]/50'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5 truncate">
-                          <span className="material-symbols-outlined text-[18px]">{app.icon}</span>
-                          <span className="truncate">{app.name}</span>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
+                {activeApp && (
+                  <div className="pt-2 border-t border-[var(--md-sys-color-surface-variant)]/50 mt-2">
+                    <button
+                      onClick={() => { setActiveTab('app'); setMobileMenuOpen(false); }}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-medium transition-all ${
+                        activeTab === 'app'
+                          ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] font-semibold'
+                          : 'text-[var(--md-sys-color-primary)] hover:bg-[var(--md-sys-color-surface-variant)]/50'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-[18px]">{activeApp.icon}</span>
+                      <span className="truncate flex-1 text-left">{activeApp.name}</span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -616,7 +616,9 @@ export default function DashboardPage() {
                 </div>
                 <div className="flex-1 bg-[var(--md-sys-color-background)] relative">
                   {iframeUrl ? (
-                    activeApp.skipIframe ? (
+                    activeApp.id === 'antigravity' ? (
+                      <AntigravitySshView host={serverStatus?.host} addToast={addToast} />
+                    ) : activeApp.skipIframe ? (
                       <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center space-y-4 max-w-md mx-auto">
                         <div className="w-16 h-16 rounded-full bg-[var(--md-sys-color-primary-container)] flex items-center justify-center text-[var(--md-sys-color-on-primary-container)] animate-pulse">
                           <span className="material-symbols-outlined text-3xl">
@@ -789,9 +791,15 @@ function HomeView({ apps, selectApp, serverStatus, addToast, fetchStatus, isRunn
               <button
                 key={app.id}
                 onClick={() => selectApp(app)}
-                className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl flex flex-col items-center justify-center text-center transition-all hover:border-[var(--md-sys-color-primary)]"
+                className="relative border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl flex flex-col items-center justify-center text-center transition-all hover:border-[var(--md-sys-color-primary)] hover:shadow-sm"
               >
-                <span className="material-symbols-outlined text-2xl mb-1.5 text-[var(--md-sys-color-on-surface-variant)]">{app.icon}</span>
+                {active && (
+                  <span className="absolute top-2.5 right-2.5 flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                )}
+                <span className={`material-symbols-outlined text-2xl mb-1.5 ${active ? 'text-[var(--md-sys-color-primary)]' : 'text-[var(--md-sys-color-on-surface-variant)]'}`}>{app.icon}</span>
                 <span className="text-[11px] font-medium truncate w-full">{app.name}</span>
               </button>
             );
@@ -1710,9 +1718,9 @@ function MaintenanceView({ serverStatus, addToast, fetchStatus }) {
     
     setVpnLoading(true);
     try {
-      const data = await apiFetch('/api/services', {
+      const data = await apiFetch('/api/vpn/status', {
         method: 'POST',
-        body: JSON.stringify({ service: 'ttyd', action: action === 'start' ? 'start' : 'stop' })
+        body: JSON.stringify({ action: action === 'start' ? 'up' : 'down' })
       });
       if (data.ok) {
         addToast(`Comando VPN enviado!`, 'success');
@@ -1721,7 +1729,7 @@ function MaintenanceView({ serverStatus, addToast, fetchStatus }) {
           fetchStatus();
         }, 5000);
       } else {
-        addToast('Erro ao executar.', 'error');
+        addToast(data.error || 'Erro ao executar.', 'error');
       }
     } catch {
       addToast('Erro de rede.', 'error');
@@ -1793,6 +1801,55 @@ function MaintenanceView({ serverStatus, addToast, fetchStatus }) {
             <pre className="whitespace-pre-wrap">{output || 'Saída do console...'}</pre>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── SSH SANDBOX HELPER VIEW ────────────────────────────────────────────────
+function AntigravitySshView({ host, addToast }) {
+  const [copied, setCopied] = useState(false);
+  const sshCmd = `ssh root@${host || '100.119.122.10'} -p 2222`;
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(sshCmd);
+    setCopied(true);
+    addToast('Comando copiado para a área de transferência!', 'success');
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center space-y-6 max-w-md mx-auto">
+      <div className="w-16 h-16 rounded-2xl bg-[var(--md-sys-color-primary-container)] flex items-center justify-center text-[var(--md-sys-color-on-primary-container)] shadow-inner">
+        <span className="material-symbols-outlined text-3xl">vpn_key</span>
+      </div>
+      
+      <div className="space-y-2">
+        <h3 className="text-sm font-semibold text-[var(--md-sys-color-on-surface)]">
+          Antigravity SSH Sandbox Ativo!
+        </h3>
+        <p className="text-[11px] text-[var(--md-sys-color-on-surface-variant)] leading-relaxed">
+          O contêiner Alpine com SSH foi iniciado com sucesso no servidor remoto. Conecte-se diretamente do seu terminal usando o comando abaixo.
+        </p>
+      </div>
+
+      <div className="w-full bg-black text-green-400 p-3.5 rounded-xl font-mono text-[11px] text-left border border-gray-800 flex items-center justify-between select-all group relative">
+        <span className="truncate">{sshCmd}</span>
+        <button 
+          onClick={copyToClipboard}
+          className="ml-2 bg-gray-900 hover:bg-gray-800 text-green-400 border border-gray-700 p-1.5 rounded-lg flex items-center justify-center transition-colors flex-shrink-0"
+          title="Copiar comando"
+        >
+          <span className="material-symbols-outlined text-xs">
+            {copied ? 'check' : 'content_copy'}
+          </span>
+        </button>
+      </div>
+
+      <div className="text-[10px] text-[var(--md-sys-color-on-surface-variant)] bg-[var(--md-sys-color-surface-variant)]/40 p-3 rounded-xl border border-[var(--md-sys-color-surface-variant)]/20 leading-relaxed text-left w-full space-y-1">
+        <span className="font-semibold block text-[var(--md-sys-color-on-surface)]">⚠️ Observações importantes:</span>
+        <p>1. Certifique-se de estar conectado à <strong>VPN Tailscale</strong> ou na mesma rede local.</p>
+        <p>2. O contêiner usa sua chave SSH autorizada (<code>authorized_keys</code>) do servidor remoto para autenticação.</p>
       </div>
     </div>
   );
