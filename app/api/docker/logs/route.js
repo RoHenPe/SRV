@@ -8,7 +8,8 @@ export async function GET(request) {
       const name = searchParams.get('name');
       if (!name) throw new Error('O parâmetro "name" é obrigatório.');
       const result = await runSSH(`sudo docker logs --tail 100 ${name}`);
-      return { output: result.stdout || result.stderr || 'Sem logs.' };
+      const logs = (result.stdout + '\n' + result.stderr).trim();
+      return { output: logs || 'Sem logs.' };
     },
     request,
     'GET /api/docker/logs'

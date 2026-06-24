@@ -77,6 +77,7 @@ SSH_HOST = [seu-servidor-ip]
 SSH_HOST_VPN = [seu-vpn-ip]
 SSH_USER = [seu-usuario-ssh]
 SSH_PRIVATE_KEY_B64 = [sua-chave-em-base64]
+NGROK_AUTHTOKEN = [seu-token-do-ngrok]  # Requerido para túneis HTTPS no acesso via Vercel
 LOG_LEVEL = info
 RATE_LIMIT_ENABLED = true
 ```
