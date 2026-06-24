@@ -445,7 +445,7 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col h-[100dvh] bg-[var(--md-sys-color-background)] overflow-hidden text-[var(--md-sys-color-on-background)] relative">
       {/* Barra de Cabeçalho Superior para Celular */}
-      <header className={`md:hidden h-[calc(3.5rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] border-b border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex items-center justify-between pl-[calc(1rem+env(safe-area-inset-left))] pr-[calc(1rem+env(safe-area-inset-right))] flex-shrink-0 z-30 ${
+      <header className={`md:hidden h-[calc(3.5rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] border-b border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex items-center justify-between pl-[calc(1rem+env(safe-area-inset-left))] pr-[calc(1rem+env(safe-area-inset-right))] flex-shrink-0 z-20 ${
         activeTab === 'app' ? 'hidden' : 'flex'
       }`}>
         <button 
@@ -460,7 +460,7 @@ export default function DashboardPage() {
 
       <div className="flex flex-1 h-full overflow-hidden relative">
         {/* ─── SIDEBAR (Desktop/Mobile Collapsed) ────────────────────────────────── */}
-        <aside className={`border-r border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex flex-col justify-between flex-shrink-0 z-40 transition-all duration-200 w-[calc(4rem+env(safe-area-inset-left))] pl-[env(safe-area-inset-left)] ${
+        <aside className={`border-r border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex flex-col justify-between flex-shrink-0 z-50 transition-all duration-200 w-[calc(4rem+env(safe-area-inset-left))] pl-[env(safe-area-inset-left)] ${
           mobileMenuOpen ? 'fixed inset-y-0 left-0' : 'hidden md:flex'
         }`}>
           <div className="flex flex-col flex-1 overflow-y-auto pt-[env(safe-area-inset-top)]">
@@ -534,7 +534,7 @@ export default function DashboardPage() {
 
         {/* Backdrop overlay for mobile menu */}
         {mobileMenuOpen && (
-          <div onClick={() => setMobileMenuOpen(false)} className="fixed inset-0 z-30 bg-black/30 md:hidden" />
+          <div onClick={() => setMobileMenuOpen(false)} className="fixed inset-0 z-40 bg-black/30 md:hidden" />
         )}
 
         {/* ─── MAIN WORKSPACE ─── */}
@@ -644,8 +644,8 @@ export default function DashboardPage() {
       </div>
 
       {/* Bottom Navigation for Mobile */}
-      <nav className={`md:hidden border-t border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex items-center justify-around flex-shrink-0 z-40 pb-[env(safe-area-inset-bottom)] pt-2 pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] ${
-        activeTab === 'app' ? 'hidden' : 'flex'
+      <nav className={`md:hidden border-t border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex items-center justify-around flex-shrink-0 z-20 pb-[env(safe-area-inset-bottom)] pt-2 pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] ${
+        activeTab === 'app' || mobileMenuOpen ? 'hidden' : 'flex'
       }`}>
         {[
           { id: 'home', icon: 'home' },
