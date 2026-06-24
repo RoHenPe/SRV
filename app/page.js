@@ -426,15 +426,7 @@ export default function DashboardPage() {
   };
 
   if (!authValid) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-[var(--md-sys-color-background)]">
-        <div className="flex flex-col items-center gap-3">
-          <span className="material-symbols-outlined animate-spin text-2xl text-[var(--md-sys-color-primary)]">
-            autorenew
-          </span>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   const isOnline = serverStatus?.online;
