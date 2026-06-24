@@ -7,9 +7,9 @@ export async function POST(request) {
     async () => {
       // Remove container anterior se existir
       await runSSH("sudo docker rm -f srv_filebrowser || true");
-      // Inicia novo container File Browser
+      // Inicia novo container File Browser com a flag --noauth para remover solicitações de senha
       await runSSH(
-        "sudo docker run -d --name srv_filebrowser -p 8089:80 --entrypoint /bin/sh -v /home/rodrigo:/srv filebrowser/filebrowser:latest -c 'filebrowser -d /database/filebrowser.db config init && filebrowser -d /database/filebrowser.db config set --auth.method=noauth && filebrowser -d /database/filebrowser.db -p 80 -a 0.0.0.0 -r /srv'"
+        "sudo docker run -d --name srv_filebrowser -p 8089:80 -v /home/rodrigo:/srv filebrowser/filebrowser:latest --noauth -r /srv"
       );
       const host = getTargetHost();
       const ngrokUrl = await startNgrok(8089);

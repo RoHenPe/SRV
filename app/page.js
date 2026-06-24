@@ -94,7 +94,7 @@ export default function DashboardPage() {
   
   const [serverStatus, setServerStatus] = useState(null);
   const [theme, setTheme] = useState('light');
-  const [authValid, setAuthValid] = useState(false);
+  const [authValid, setAuthValid] = useState(typeof window !== 'undefined' ? !!localStorage.getItem('dashboard-token') : false);
   const [activeTab, setActiveTab] = useState('home'); // home, docker, ia, backup, users, maintenance, or app config
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -242,13 +242,13 @@ export default function DashboardPage() {
     };
     
     const isLocal = isIPOrLocalhost(window.location.hostname);
-    // Always use the server's IP (from serverStatus or default) for targetHost, 
-    // because the container runs on the server, not necessarily on the UI host.
-    const targetHost = serverStatus?.host || '192.168.15.109';
+    const host = isLocal 
+      ? window.location.hostname 
+      : (serverStatus?.host || window.location.hostname);
       
     const protocol = app.protocol || 'http:';
     const path = app.path || '';
-    const targetUrl = `${protocol}//${targetHost}:${app.port}${path}`;
+    const targetUrl = `${protocol}//${host}:${app.port}${path}`;
 
     // Helper checking if a container name is running
     const isContainerRunning = (name) => {
@@ -260,7 +260,7 @@ export default function DashboardPage() {
 
     const resolveUrl = async () => {
       if (!isLocal) {
-        setLaunchMessage(`Iniciando túnel seguro para ${app.name}...`);
+        setLaunchMessage('Iniciando...');
         try {
           const tunRes = await apiFetch('/api/tunnel', { method: 'POST', body: JSON.stringify({ port: app.port, protocol: app.protocol || 'http:' }) });
           if (tunRes.ok && tunRes.url) {
@@ -286,7 +286,7 @@ export default function DashboardPage() {
       }
 
       setLaunching(true);
-      setLaunchMessage(`Iniciando contêiner para ${app.name}...`);
+      setLaunchMessage('Iniciando...');
       try {
         const res = await apiFetch(`/api/sandbox/${app.id}`, { method: 'POST' });
         if (res.ok) {
@@ -329,7 +329,7 @@ export default function DashboardPage() {
         // If not running, prompt user to start service
         if (window.confirm(`O serviço ${app.name} não está ativo. Deseja iniciá-lo agora?`)) {
           setLaunching(true);
-          setLaunchMessage(`Iniciando serviço ${app.name}...`);
+          setLaunchMessage('Iniciando...');
           try {
             const res = await apiFetch('/api/services', {
               method: 'POST',
@@ -391,7 +391,7 @@ export default function DashboardPage() {
     if (!window.confirm(`Deseja realmente parar o contêiner do aplicativo ${activeApp.name}?`)) return;
 
     setLaunching(true);
-    setLaunchMessage(`Parando ${activeApp.name}...`);
+    setLaunchMessage('Parando...');
     try {
       let endpoint = '';
       let body = {};
@@ -440,7 +440,30 @@ export default function DashboardPage() {
   const isOnline = serverStatus?.online;
 
   return (
-    <div className="flex flex-col md:flex-row h-screen bg-[var(--md-sys-color-background)] overflow-hidden text-[var(--md-sys-color-on-background)] relative">
+    <div className="flex flex-col h-screen bg-[var(--md-sys-color-background)] overflow-hidden text-[var(--md-sys-color-on-background)] relative">
+      {/* Barra de Cabeçalho Superior para Celular */}
+      <header className="md:hidden h-14 border-b border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex items-center justify-between px-4 flex-shrink-0 z-30">
+        <button 
+          onClick={() => setMobileMenuOpen(true)} 
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)] hover:bg-black/5"
+        >
+          <span className="material-symbols-outlined text-xl">menu</span>
+        </button>
+        <span className="font-bold tracking-tight text-sm google-sans">SRV</span>
+        <div className="flex items-center gap-2">
+          <div 
+            title={isOnline === false ? 'Offline' : isOnline ? 'Online' : 'Checking'}
+            className={`w-2 h-2 rounded-full ${
+              isOnline === false 
+                ? 'bg-[var(--md-sys-color-error)] animate-pulse' 
+                : isOnline 
+                ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' 
+                : 'bg-amber-500 animate-pulse'
+            }`}
+          />
+        </div>
+      </header>
+
       <div className="flex flex-1 h-full overflow-hidden relative">
         {/* ─── SIDEBAR (Desktop) ────────────────────────────────────────────────── */}
         <aside className={`border-r border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex flex-col justify-between flex-shrink-0 z-40 transition-all duration-200 ${
