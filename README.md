@@ -35,8 +35,8 @@ cp .env.example .env.local
 Edite `.env.local` com os dados do seu servidor:
 
 ```env
-SSH_HOST=192.168.15.109
-SSH_HOST_VPN=100.119.122.10
+SSH_HOST=192.168.1x.1xx
+SSH_HOST_VPN=100.1xx.1xx.xx
 SSH_USER=rodrigo
 SSH_PRIVATE_KEY_B64=<base64 da chave privada>
 ```
