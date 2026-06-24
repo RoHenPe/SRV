@@ -112,15 +112,15 @@ export default function DashboardPage() {
     { id: 'filebrowser', name: 'Arquivos', icon: 'folder_open', type: 'sandbox', port: 8089 },
     { id: 'kdenlive', name: 'Kdenlive', icon: 'movie', type: 'sandbox', port: 3005 },
     { id: 'neovim', name: 'Neovim', icon: 'edit_note', type: 'sandbox', port: 7683 },
-    { id: 'antigravity', name: 'Antigravity SSH', icon: 'vpn_key', type: 'sandbox', port: 2222, skipIframe: true },
-    { id: 'terminal', name: 'Terminal (Sandbox)', icon: 'terminal', type: 'sandbox', port: 7682 },
-    { id: 'ttyd', name: 'Terminal (Servidor)', icon: 'wysiwyg', type: 'service', serviceName: 'ttyd', port: 7681 },
+    { id: 'antigravity', name: 'Antigravity SSH', icon: 'vpn_key', type: 'sandbox', port: 7685 },
+    { id: 'terminal', name: 'Terminal', icon: 'terminal', type: 'sandbox', port: 7682 },
+    { id: 'ttyd', name: 'Monitor', icon: 'monitoring', type: 'service', serviceName: 'ttyd', port: 7681 },
     { id: 'cockpit', name: 'Cockpit', icon: 'web', type: 'static', port: 9090, protocol: 'https:', skipIframe: true },
     { id: 'cups', name: 'Impressora', icon: 'print', type: 'service', serviceName: 'cups', port: 631, skipIframe: true },
     { id: 'scanner', name: 'Scanner', icon: 'document_scanner', type: 'service', serviceName: 'scanner', port: 8080 },
-    { id: 'metabase', name: 'BI Metabase', icon: 'analytics', type: 'service', serviceName: 'portal', port: 3003 },
-    { id: 'jupyter', name: 'Jupyter Spark', icon: 'science', type: 'service', serviceName: 'portal', port: 8888 },
-    { id: 'onlyoffice', name: 'Documentos', icon: 'description', type: 'service', serviceName: 'portal', port: 8086, path: '/example' },
+    { id: 'metabase', name: 'BI Metabase', icon: 'analytics', type: 'service', serviceName: 'portal', port: 3003, skipIframe: true },
+    { id: 'jupyter', name: 'Jupyter Spark', icon: 'science', type: 'service', serviceName: 'portal', port: 8888, skipIframe: true },
+    { id: 'onlyoffice', name: 'Documentos', icon: 'description', type: 'service', serviceName: 'portal', port: 8086, path: '/example', skipIframe: true },
     { id: 'emulator', name: 'Android Emulator', icon: 'phone_android', type: 'service', serviceName: 'emulator', port: 6081 },
     { id: 'jarvis', name: 'Jarvis', icon: 'smart_toy', type: 'service', serviceName: 'jarvis', port: 3010 }
   ];
@@ -494,47 +494,43 @@ export default function DashboardPage() {
             </div>
 
             {/* Navigation Menu */}
-            <div className="px-2 py-4 space-y-4 flex flex-col items-center">
-              <div className="space-y-1.5 flex flex-col items-center w-full">
-                {[
-                  { id: 'home', name: 'Início', icon: 'home' },
-                  { id: 'docker', name: 'Docker', icon: 'view_in_ar' },
-                  { id: 'ia', name: 'IA', icon: 'psychology' },
-                  { id: 'backup', name: 'Backup', icon: 'cloud_sync' },
-                  { id: 'users', name: 'Contas', icon: 'group' },
-                  { id: 'maintenance', name: 'Ajustes', icon: 'build' }
-                ].map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => { setActiveTab(tab.id); setMobileMenuOpen(false); }}
-                    title={tab.name}
-                    className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${
-                      activeTab === tab.id
-                        ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] font-semibold'
-                        : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-[18px]">{tab.icon}</span>
-                  </button>
-                ))}
-              </div>
+            <div className="px-2 py-4 flex flex-col items-center gap-1.5 overflow-y-auto flex-1 w-full">
+              {[
+                { id: 'home', name: 'Início', icon: 'home' },
+                { id: 'docker', name: 'Docker', icon: 'view_in_ar' },
+                { id: 'ia', name: 'IA', icon: 'psychology' },
+                { id: 'backup', name: 'Backup', icon: 'cloud_sync' },
+                { id: 'users', name: 'Contas', icon: 'group' },
+                { id: 'maintenance', name: 'Ajustes', icon: 'build' }
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => { setActiveTab(tab.id); setMobileMenuOpen(false); }}
+                  title={tab.name}
+                  className={`w-10 h-10 flex flex-shrink-0 items-center justify-center rounded-xl transition-all ${
+                    activeTab === tab.id
+                      ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] font-semibold'
+                      : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[18px]">{tab.icon}</span>
+                </button>
+              ))}
 
-              <div className="pt-3 border-t border-[var(--md-sys-color-surface-variant)]/40 w-full flex flex-col items-center gap-1.5">
-                {apps.map((app) => (
-                  <button
-                    key={app.id}
-                    onClick={() => selectApp(app)}
-                    title={app.name}
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
-                      activeTab === 'app' && activeApp?.id === app.id
-                        ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)]'
-                        : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]/50'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-[18px]">{app.icon}</span>
-                  </button>
-                ))}
-              </div>
+              {apps.map((app) => (
+                <button
+                  key={app.id}
+                  onClick={() => selectApp(app)}
+                  title={app.name}
+                  className={`w-10 h-10 flex-shrink-0 rounded-xl flex items-center justify-center transition-all ${
+                    activeTab === 'app' && activeApp?.id === app.id
+                      ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)]'
+                      : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]/50'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[18px]">{app.icon}</span>
+                </button>
+              ))}
             </div>
           </div>
 

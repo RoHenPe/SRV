@@ -76,6 +76,12 @@ export async function GET(request) {
         ? dockerResult.stdout.split('\n').map(name => name.trim()).filter(Boolean)
         : [];
 
+      // Verifica se o agente Antigravity no host está ativo na porta 7685
+      const agResult = await runSSH('pgrep -f "ttyd -W -p 7685" || true');
+      if (agResult.stdout.trim()) {
+        runningContainers.push('srv_ag_sandbox');
+      }
+
       const parsed = parseStatus(sysResult.stdout);
 
       return {

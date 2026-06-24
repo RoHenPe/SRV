@@ -1,20 +1,20 @@
 import { runSSH, getTargetHost, apiHandler } from '@/lib/ssh';
+import { startNgrok } from '@/lib/ngrok';
 
-// POST /api/sandbox/antigravity — inicia Antigravity (SSH) container
+// POST /api/sandbox/antigravity — inicia ttyd com interpreter no host
 export async function POST(request) {
   return apiHandler(
     async () => {
-      await runSSH("sudo docker rm -f srv_ag_sandbox || true");
-      await runSSH(
-        "sudo docker run -d --rm -p 2222:22 --name srv_ag_sandbox " +
-        "-v ~/.ssh/authorized_keys:/root/.ssh/authorized_keys:ro " +
-        "alpine sh -c 'apk update && apk add openssh git neovim && ssh-keygen -A && /usr/sbin/sshd -D -o StrictModes=no'"
-      );
+      // Para qualquer ttyd rodando no interpreter
+      await runSSH("pkill -f 'ttyd -W -p 7685' || true");
+      // Inicia ttyd com interpreter no host
+      await runSSH("nohup ttyd -W -p 7685 /home/rodrigo/.local/bin/interpreter > /dev/null 2>&1 &");
       const host = getTargetHost();
+      const ngrokUrl = await startNgrok(7685);
       return {
         ok: true,
-        message: `Sandbox Antigravity SSH iniciado na porta 2222.`,
-        connectionInfo: `ssh root@${host} -p 2222`,
+        message: 'Agente Antigravity iniciado!',
+        url: ngrokUrl ? ngrokUrl + "" : `http://${host}:7685`,
       };
     },
     request,
