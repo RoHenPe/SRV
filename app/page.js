@@ -468,39 +468,34 @@ export default function DashboardPage() {
       </header>
 
       <div className="flex flex-1 h-full overflow-hidden relative">
-        {/* ─── SIDEBAR (Desktop) ────────────────────────────────────────────────── */}
+        {/* ─── SIDEBAR (Desktop/Mobile Collapsed) ────────────────────────────────── */}
         <aside className={`border-r border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex flex-col justify-between flex-shrink-0 z-40 transition-all duration-200 ${
-          mobileMenuOpen ? 'fixed inset-y-0 left-0 w-64' : 'hidden md:flex w-64'
+          mobileMenuOpen ? 'fixed inset-y-0 left-0 w-16' : 'hidden md:flex w-16'
         }`}>
           <div className="flex flex-col flex-1 overflow-y-auto">
             {/* Brand header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--md-sys-color-surface-variant)]">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-[var(--md-sys-color-primary-container)] flex items-center justify-center">
-                  <span className="material-symbols-outlined text-[var(--md-sys-color-on-primary-container)] text-lg icon-filled">dns</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-bold tracking-tight text-sm google-sans">SRV</span>
-                  <div 
-                    title={isOnline === false ? 'Offline' : isOnline ? 'Online' : 'Checking'}
-                    className={`w-1.5 h-1.5 rounded-full ${
-                      isOnline === false 
-                        ? 'bg-[var(--md-sys-color-error)]' 
-                        : isOnline 
-                        ? 'bg-[var(--md-sys-color-tertiary)] animate-pulse' 
-                        : 'bg-[var(--md-sys-color-warning)]'
-                    }`}
-                  />
-                </div>
+            <div className="flex items-center justify-center py-4 border-b border-[var(--md-sys-color-surface-variant)] relative">
+              <div className="w-10 h-10 rounded-xl bg-[var(--md-sys-color-primary-container)] flex items-center justify-center relative">
+                <span className="material-symbols-outlined text-[var(--md-sys-color-on-primary-container)] text-lg icon-filled">dns</span>
+                <div 
+                  title={isOnline === false ? 'Offline' : isOnline ? 'Online' : 'Checking'}
+                  className={`w-2 h-2 rounded-full absolute -top-0.5 -right-0.5 border border-[var(--md-sys-color-surface)] ${
+                    isOnline === false 
+                      ? 'bg-[var(--md-sys-color-error)]' 
+                      : isOnline 
+                      ? 'bg-[var(--md-sys-color-tertiary)] animate-pulse' 
+                      : 'bg-[var(--md-sys-color-warning)]'
+                  }`}
+                />
               </div>
-              <button onClick={() => setMobileMenuOpen(false)} className="md:hidden text-[var(--md-sys-color-on-surface-variant)]">
-                <span className="material-symbols-outlined">close</span>
+              <button onClick={() => setMobileMenuOpen(false)} className="md:hidden absolute top-2 right-2 text-[var(--md-sys-color-on-surface-variant)]">
+                <span className="material-symbols-outlined text-xs">close</span>
               </button>
             </div>
 
             {/* Navigation Menu */}
-            <div className="px-3 py-4 space-y-4">
-              <div className="space-y-1">
+            <div className="px-2 py-4 space-y-4 flex flex-col items-center">
+              <div className="space-y-1.5 flex flex-col items-center w-full">
                 {[
                   { id: 'home', name: 'Início', icon: 'home' },
                   { id: 'docker', name: 'Docker', icon: 'view_in_ar' },
@@ -512,49 +507,46 @@ export default function DashboardPage() {
                   <button
                     key={tab.id}
                     onClick={() => { setActiveTab(tab.id); setMobileMenuOpen(false); }}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-medium transition-all ${
+                    title={tab.name}
+                    className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${
                       activeTab === tab.id
                         ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] font-semibold'
                         : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
                     }`}
                   >
                     <span className="material-symbols-outlined text-[18px]">{tab.icon}</span>
-                    <span>{tab.name}</span>
                   </button>
                 ))}
               </div>
 
-              <div className="pt-3 border-t border-[var(--md-sys-color-surface-variant)]/40">
-                <span className="px-4 text-[9px] font-bold text-[var(--md-sys-color-on-surface-variant)]/60 tracking-wider uppercase block mb-2">Aplicações</span>
-                <div className="grid grid-cols-4 gap-1.5 px-3">
-                  {apps.map((app) => (
-                    <button
-                      key={app.id}
-                      onClick={() => selectApp(app)}
-                      title={app.name}
-                      className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
-                        activeTab === 'app' && activeApp?.id === app.id
-                          ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)]'
-                          : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]/50'
-                      }`}
-                    >
-                      <span className="material-symbols-outlined text-lg">{app.icon}</span>
-                    </button>
-                  ))}
-                </div>
+              <div className="pt-3 border-t border-[var(--md-sys-color-surface-variant)]/40 w-full flex flex-col items-center gap-1.5">
+                {apps.map((app) => (
+                  <button
+                    key={app.id}
+                    onClick={() => selectApp(app)}
+                    title={app.name}
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+                      activeTab === 'app' && activeApp?.id === app.id
+                        ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)]'
+                        : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]/50'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[18px]">{app.icon}</span>
+                  </button>
+                ))}
               </div>
             </div>
           </div>
 
           {/* Footer controls */}
-          <div className="p-4 border-t border-[var(--md-sys-color-surface-variant)] flex items-center justify-between">
-            <button onClick={toggleTheme} className="w-9 h-9 rounded-xl bg-[var(--md-sys-color-surface-variant)] flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)]">
+          <div className="p-3 border-t border-[var(--md-sys-color-surface-variant)] flex flex-col items-center gap-2">
+            <button onClick={toggleTheme} className="w-10 h-10 rounded-xl bg-[var(--md-sys-color-surface-variant)] flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)]">
               <span className="material-symbols-outlined text-base">
                 {theme === 'dark' ? 'light_mode' : 'dark_mode'}
               </span>
             </button>
 
-            <button onClick={handleLogout} className="w-9 h-9 rounded-xl bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)] flex items-center justify-center">
+            <button onClick={handleLogout} className="w-10 h-10 rounded-xl bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)] flex items-center justify-center">
               <span className="material-symbols-outlined text-base">logout</span>
             </button>
           </div>
