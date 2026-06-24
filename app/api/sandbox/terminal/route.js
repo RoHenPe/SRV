@@ -9,7 +9,7 @@ export async function POST(request) {
       await runSSH("sudo docker rm -f srv_terminal_sandbox || true");
       // Inicia terminal sandbox conectando ao terminal do servidor local via SSH
       await runSSH(
-        "sudo docker run -d --rm --name srv_terminal_sandbox -p 7682:7681 -v /home/rodrigo/.ssh:/home/rodrigo/.ssh:ro srv-dashboard-srv-dashboard:latest ttyd -p 7681 ssh -o StrictHostKeyChecking=no rodrigo@127.0.0.1"
+        "sudo docker run -d --rm --name srv_terminal_sandbox -p 7682:7681 -v /home/rodrigo/.ssh:/home/rodrigo/.ssh:ro srv-dashboard-srv-dashboard:latest ttyd -W -p 7681 ssh -o StrictHostKeyChecking=no rodrigo@127.0.0.1"
       );
       const host = getTargetHost();
       const ngrokUrl = await startNgrok(7682);
