@@ -525,15 +525,14 @@ export default function DashboardPage() {
                   <div className="pt-2 border-t border-[var(--md-sys-color-surface-variant)]/50 mt-2">
                     <button
                       onClick={() => { setActiveTab('app'); setMobileMenuOpen(false); }}
-                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-medium transition-all ${
+                      className={`w-full flex items-center gap-3 px-4 py-2 rounded-xl text-xs font-medium transition-all ${
                         activeTab === 'app'
                           ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] font-semibold'
-                          : 'text-[var(--md-sys-color-primary)] hover:bg-[var(--md-sys-color-surface-variant)]/50'
+                          : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]/50'
                       }`}
                     >
                       <span className="material-symbols-outlined text-[18px]">{activeApp.icon}</span>
-                      <span className="truncate flex-1 text-left">{activeApp.name}</span>
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="truncate text-left">{activeApp.name}</span>
                     </button>
                   </div>
                 )}
@@ -619,60 +618,38 @@ export default function DashboardPage() {
                     activeApp.id === 'antigravity' ? (
                       <AntigravitySshView host={serverStatus?.host} addToast={addToast} />
                     ) : activeApp.skipIframe ? (
-                      <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center space-y-4 max-w-md mx-auto">
-                        <div className="w-16 h-16 rounded-full bg-[var(--md-sys-color-primary-container)] flex items-center justify-center text-[var(--md-sys-color-on-primary-container)] animate-pulse">
-                          <span className="material-symbols-outlined text-3xl">
-                            {activeApp.icon}
-                          </span>
-                        </div>
-                        <h3 className="text-sm font-semibold text-[var(--md-sys-color-on-surface)]">
-                          {activeApp.name} está rodando!
+                      <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center space-y-3 max-w-xs mx-auto">
+                        <h3 className="text-xs font-semibold text-[var(--md-sys-color-on-surface)]">
+                          {activeApp.name}
                         </h3>
-                        <p className="text-[11px] text-[var(--md-sys-color-on-surface-variant)] leading-relaxed">
-                          Por motivos de segurança e políticas anti-clickjacking do navegador, este serviço não pode ser embutido diretamente nesta página.
-                        </p>
                         <a 
                           href={iframeUrl} 
                           target="_blank" 
                           rel="noopener noreferrer" 
-                          className="btn-primary py-2 px-5 rounded-xl font-bold flex items-center justify-center gap-1.5 text-xs shadow-md"
+                          className="btn-primary py-1.5 px-4 rounded-xl font-medium flex items-center justify-center gap-1 text-xs"
                         >
                           <span className="material-symbols-outlined text-sm">open_in_new</span>
-                          <span>Abrir em Nova Aba</span>
+                          <span>Abrir</span>
                         </a>
                       </div>
                     ) : (
                       <>
                         <iframe src={iframeUrl} className="w-full h-full border-0" allow="clipboard-read; clipboard-write; fullscreen" />
                         {typeof window !== 'undefined' && window.location.protocol === 'https:' && iframeUrl.startsWith('http://') && (
-                          <div className="absolute bottom-4 left-4 right-4 bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)] border border-[var(--md-sys-color-error)]/20 p-3 rounded-xl text-xs flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg z-10 animate-fade-in">
-                            <span className="font-medium text-left">
-                              ⚠️ Bloqueio de conteúdo misto (HTTPS para HTTP). Se o aplicativo não carregar:
-                            </span>
-                            <a 
-                              href={iframeUrl} 
-                              target="_blank" 
-                              rel="noopener noreferrer" 
-                              className="bg-[var(--md-sys-color-error)] text-white font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 hover:opacity-90 transition-opacity whitespace-nowrap"
-                            >
-                              <span className="material-symbols-outlined text-sm">open_in_new</span>
-                              <span>Abrir em Nova Aba</span>
+                          <div className="absolute bottom-4 left-4 right-4 bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)] p-2.5 rounded-xl text-[10px] flex items-center justify-between gap-3 shadow z-10">
+                            <span>Conteúdo misto detectado.</span>
+                            <a href={iframeUrl} target="_blank" rel="noopener noreferrer" className="bg-[var(--md-sys-color-error)] text-white px-2.5 py-1 rounded-lg flex items-center gap-1 hover:opacity-90 transition-opacity whitespace-nowrap">
+                              <span className="material-symbols-outlined text-xs">open_in_new</span>
+                              <span>Abrir</span>
                             </a>
                           </div>
                         )}
                         {typeof window !== 'undefined' && iframeUrl.includes('ngrok') && (
-                          <div className="absolute bottom-4 left-4 right-4 bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] border border-[var(--md-sys-color-primary)]/20 p-3 rounded-xl text-xs flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg z-10 animate-fade-in">
-                            <span className="font-medium text-left">
-                              ⚠️ Se o aplicativo pedir senha ou tela de aviso: clique em 'Abrir em Nova Aba' e confirme 'Visit Site' uma vez para liberar o Ngrok.
-                            </span>
-                            <a 
-                              href={iframeUrl} 
-                              target="_blank" 
-                              rel="noopener noreferrer" 
-                              className="bg-[var(--md-sys-color-primary)] text-white font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 hover:opacity-90 transition-opacity whitespace-nowrap"
-                            >
-                              <span className="material-symbols-outlined text-sm">open_in_new</span>
-                              <span>Abrir em Nova Aba</span>
+                          <div className="absolute bottom-4 left-4 right-4 bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] p-2.5 rounded-xl text-[10px] flex items-center justify-between gap-3 shadow z-10">
+                            <span>Para liberar o aviso do Ngrok:</span>
+                            <a href={iframeUrl} target="_blank" rel="noopener noreferrer" className="bg-[var(--md-sys-color-primary)] text-white px-2.5 py-1 rounded-lg flex items-center gap-1 hover:opacity-90 transition-opacity whitespace-nowrap">
+                              <span className="material-symbols-outlined text-xs">open_in_new</span>
+                              <span>Abrir</span>
                             </a>
                           </div>
                         )}
@@ -786,20 +763,13 @@ function HomeView({ apps, selectApp, serverStatus, addToast, fetchStatus, isRunn
       <div className="space-y-2">
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
           {apps.map((app) => {
-            const active = isRunning(app);
             return (
               <button
                 key={app.id}
                 onClick={() => selectApp(app)}
-                className="relative border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl flex flex-col items-center justify-center text-center transition-all hover:border-[var(--md-sys-color-primary)] hover:shadow-sm"
+                className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl flex flex-col items-center justify-center text-center transition-all hover:border-[var(--md-sys-color-primary)]"
               >
-                {active && (
-                  <span className="absolute top-2.5 right-2.5 flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                  </span>
-                )}
-                <span className={`material-symbols-outlined text-2xl mb-1.5 ${active ? 'text-[var(--md-sys-color-primary)]' : 'text-[var(--md-sys-color-on-surface-variant)]'}`}>{app.icon}</span>
+                <span className="material-symbols-outlined text-xl mb-1.5 text-[var(--md-sys-color-on-surface-variant)]">{app.icon}</span>
                 <span className="text-[11px] font-medium truncate w-full">{app.name}</span>
               </button>
             );
@@ -1814,42 +1784,26 @@ function AntigravitySshView({ host, addToast }) {
   const copyToClipboard = () => {
     navigator.clipboard.writeText(sshCmd);
     setCopied(true);
-    addToast('Comando copiado para a área de transferência!', 'success');
+    addToast('Copiado!', 'success');
     setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center space-y-6 max-w-md mx-auto">
-      <div className="w-16 h-16 rounded-2xl bg-[var(--md-sys-color-primary-container)] flex items-center justify-center text-[var(--md-sys-color-on-primary-container)] shadow-inner">
-        <span className="material-symbols-outlined text-3xl">vpn_key</span>
-      </div>
-      
-      <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-[var(--md-sys-color-on-surface)]">
-          Antigravity SSH Sandbox Ativo!
-        </h3>
-        <p className="text-[11px] text-[var(--md-sys-color-on-surface-variant)] leading-relaxed">
-          O contêiner Alpine com SSH foi iniciado com sucesso no servidor remoto. Conecte-se diretamente do seu terminal usando o comando abaixo.
-        </p>
-      </div>
-
-      <div className="w-full bg-black text-green-400 p-3.5 rounded-xl font-mono text-[11px] text-left border border-gray-800 flex items-center justify-between select-all group relative">
+    <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center max-w-sm mx-auto space-y-4">
+      <h3 className="text-xs font-semibold text-[var(--md-sys-color-on-surface)]">
+        Antigravity SSH
+      </h3>
+      <div className="w-full bg-black text-green-400 p-3 rounded-xl font-mono text-[11px] text-left border border-gray-800 flex items-center justify-between select-all">
         <span className="truncate">{sshCmd}</span>
         <button 
           onClick={copyToClipboard}
           className="ml-2 bg-gray-900 hover:bg-gray-800 text-green-400 border border-gray-700 p-1.5 rounded-lg flex items-center justify-center transition-colors flex-shrink-0"
-          title="Copiar comando"
+          title="Copiar"
         >
           <span className="material-symbols-outlined text-xs">
             {copied ? 'check' : 'content_copy'}
           </span>
         </button>
-      </div>
-
-      <div className="text-[10px] text-[var(--md-sys-color-on-surface-variant)] bg-[var(--md-sys-color-surface-variant)]/40 p-3 rounded-xl border border-[var(--md-sys-color-surface-variant)]/20 leading-relaxed text-left w-full space-y-1">
-        <span className="font-semibold block text-[var(--md-sys-color-on-surface)]">⚠️ Observações importantes:</span>
-        <p>1. Certifique-se de estar conectado à <strong>VPN Tailscale</strong> ou na mesma rede local.</p>
-        <p>2. O contêiner usa sua chave SSH autorizada (<code>authorized_keys</code>) do servidor remoto para autenticação.</p>
       </div>
     </div>
   );
