@@ -658,6 +658,22 @@ export default function DashboardPage() {
                             </a>
                           </div>
                         )}
+                        {typeof window !== 'undefined' && iframeUrl.includes('ngrok') && (
+                          <div className="absolute bottom-4 left-4 right-4 bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] border border-[var(--md-sys-color-primary)]/20 p-3 rounded-xl text-xs flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg z-10 animate-fade-in">
+                            <span className="font-medium text-left">
+                              ⚠️ Se o aplicativo pedir senha ou tela de aviso: clique em 'Abrir em Nova Aba' e confirme 'Visit Site' uma vez para liberar o Ngrok.
+                            </span>
+                            <a 
+                              href={iframeUrl} 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              className="bg-[var(--md-sys-color-primary)] text-white font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 hover:opacity-90 transition-opacity whitespace-nowrap"
+                            >
+                              <span className="material-symbols-outlined text-sm">open_in_new</span>
+                              <span>Abrir em Nova Aba</span>
+                            </a>
+                          </div>
+                        )}
                       </>
                     )
                   ) : (
