@@ -13,11 +13,16 @@ export async function POST(request) {
         "-v /home/rodrigo/webtop_config:/config -v /home/rodrigo:/storage " +
         "--shm-size=2gb srv-webtop-antigravity:latest"
       );
+      // Remove basic auth e recarrega nginx para evitar prompt de credenciais
+      await runSSH(
+        "sleep 2 && sudo docker exec srv_webtop_sandbox sed -i 's/^\\s*auth_basic/#auth_basic/g' /etc/nginx/sites-available/default && " +
+        "sudo docker exec srv_webtop_sandbox nginx -s reload || true"
+      );
       const host = getTargetHost();
       return {
         ok: true,
         message: 'Webtop iniciado com sucesso!',
-        url: `https://${host}:3001`,
+        url: `http://${host}:3000`,
       };
     },
     request,

@@ -282,6 +282,8 @@ export default function DashboardPage() {
       // Map app id to container name
       let containerName = `srv_${app.id}_sandbox`;
       if (app.id === 'filebrowser') containerName = 'srv_filebrowser';
+      else if (app.id === 'antigravity') containerName = 'srv_ag_sandbox';
+      else if (app.id === 'neovim') containerName = 'srv_nvim_sandbox';
 
       if (isContainerRunning(containerName)) {
         setLaunching(true);
@@ -497,7 +499,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Navigation Menu */}
-            <div className="px-3 py-4 space-y-6">
+            <div className="px-3 py-4 space-y-4">
               <div className="space-y-1">
                 {[
                   { id: 'home', name: 'Início', icon: 'home' },
@@ -520,22 +522,26 @@ export default function DashboardPage() {
                     <span>{tab.name}</span>
                   </button>
                 ))}
+              </div>
 
-                {activeApp && (
-                  <div className="pt-2 border-t border-[var(--md-sys-color-surface-variant)]/50 mt-2">
+              <div className="pt-3 border-t border-[var(--md-sys-color-surface-variant)]/40">
+                <span className="px-4 text-[9px] font-bold text-[var(--md-sys-color-on-surface-variant)]/60 tracking-wider uppercase block mb-2">Aplicações</span>
+                <div className="grid grid-cols-4 gap-1.5 px-3">
+                  {apps.map((app) => (
                     <button
-                      onClick={() => { setActiveTab('app'); setMobileMenuOpen(false); }}
-                      className={`w-full flex items-center gap-3 px-4 py-2 rounded-xl text-xs font-medium transition-all ${
-                        activeTab === 'app'
-                          ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] font-semibold'
+                      key={app.id}
+                      onClick={() => selectApp(app)}
+                      title={app.name}
+                      className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
+                        activeTab === 'app' && activeApp?.id === app.id
+                          ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)]'
                           : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]/50'
                       }`}
                     >
-                      <span className="material-symbols-outlined text-[18px]">{activeApp.icon}</span>
-                      <span className="truncate text-left">{activeApp.name}</span>
+                      <span className="material-symbols-outlined text-lg">{app.icon}</span>
                     </button>
-                  </div>
-                )}
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -565,16 +571,7 @@ export default function DashboardPage() {
           <main className={`flex-1 overflow-y-auto relative ${
             activeTab === 'app' ? 'p-0' : 'p-4 md:p-6'
           }`}>
-            {launching && (
-              <div className="absolute inset-0 bg-[var(--md-sys-color-background)]/85 z-30 flex flex-col items-center justify-center gap-3">
-                <span className="material-symbols-outlined animate-spin text-3xl text-[var(--md-sys-color-primary)]">
-                  autorenew
-                </span>
-                <span className="text-xs text-[var(--md-sys-color-on-surface-variant)] font-medium">
-                  {launchMessage}
-                </span>
-              </div>
-            )}
+
 
             {activeTab === 'home' && <HomeView apps={apps} selectApp={selectApp} serverStatus={serverStatus} addToast={addToast} fetchStatus={fetchStatus} isRunning={isRunning} />}
             {activeTab === 'docker' && <DockerView addToast={addToast} />}
