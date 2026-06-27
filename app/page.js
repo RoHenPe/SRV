@@ -458,7 +458,7 @@ export default function DashboardPage() {
         <div className="w-9 h-9" />
       </header>
 
-      <div className="flex flex-1 h-full overflow-hidden relative">
+      <div className={`flex flex-1 h-full overflow-hidden relative ${mobileMenuOpen ? 'z-50' : 'z-10'}`}>
         {/* ─── SIDEBAR (Desktop/Mobile Collapsed) ────────────────────────────────── */}
         <aside className={`border-r border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex flex-col justify-between flex-shrink-0 z-50 transition-all duration-200 w-[calc(4rem+env(safe-area-inset-left))] pl-[env(safe-area-inset-left)] ${
           mobileMenuOpen ? 'fixed inset-y-0 left-0' : 'hidden md:flex'
@@ -1633,6 +1633,8 @@ function MaintenanceView({ serverStatus, addToast, fetchStatus }) {
   const [loading, setLoading] = useState(false);
   const [vpnLoading, setVpnLoading] = useState(false);
   const [vpnStatus, setVpnStatus] = useState('');
+  const [winStatus, setWinStatus] = useState({ isos: { win10: false, win11: false }, vmRunning: false, reports: [] });
+  const [winLoading, setWinLoading] = useState(false);
 
   const runMaintenance = async (action, title) => {
     if (!window.confirm(`Executar: ${title}?`)) return;
@@ -1662,6 +1664,19 @@ function MaintenanceView({ serverStatus, addToast, fetchStatus }) {
     setVpnLoading(false);
   }, []);
 
+  const fetchWindowsStatus = useCallback(async () => {
+    setWinLoading(true);
+    try {
+      const data = await apiFetch('/api/maintenance/windows');
+      if (data.ok) {
+        setWinStatus(data);
+      }
+    } catch {
+      addToast('Erro ao obter status do Windows.', 'error');
+    }
+    setWinLoading(false);
+  }, [addToast]);
+
   const toggleVpn = async (action) => {
     if (!window.confirm(`Deseja ${action === 'start' ? 'ativar' : 'desativar'} a VPN?`)) return;
     
@@ -1686,15 +1701,40 @@ function MaintenanceView({ serverStatus, addToast, fetchStatus }) {
     setVpnLoading(false);
   };
 
+  const toggleWinVm = async (action) => {
+    const title = action === 'start_vm' ? 'Iniciar VM de Testes' : 'Parar VM de Testes';
+    if (!window.confirm(`Deseja ${title}?`)) return;
+
+    setWinLoading(true);
+    try {
+      const data = await apiFetch('/api/maintenance/windows', {
+        method: 'POST',
+        body: JSON.stringify({ action })
+      });
+      if (data.ok) {
+        addToast(`${title} executado!`, 'success');
+        setOutput(data.output || data.message || 'Concluído.');
+        setTimeout(fetchWindowsStatus, 3000);
+      } else {
+        addToast(data.error || 'Erro ao executar.', 'error');
+      }
+    } catch {
+      addToast('Erro de rede.', 'error');
+    }
+    setWinLoading(false);
+  };
+
   useEffect(() => {
     getVpnStatus();
-  }, [getVpnStatus]);
+    fetchWindowsStatus();
+  }, [getVpnStatus, fetchWindowsStatus]);
 
   return (
     <div className="space-y-4 text-xs">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* VPN Card & Maintenance buttons */}
+        {/* Left Column: Cards */}
         <div className="space-y-4">
+          {/* VPN Tailscale Card */}
           <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-3">
             <div className="flex items-center justify-between">
               <span className="font-semibold text-xs flex items-center gap-1.5">
@@ -1721,6 +1761,7 @@ function MaintenanceView({ serverStatus, addToast, fetchStatus }) {
             </pre>
           </div>
 
+          {/* Maintenance Card */}
           <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-3">
             <span className="font-semibold text-xs flex items-center gap-1.5">
               <span className="material-symbols-outlined text-[var(--md-sys-color-primary)]">build</span>
@@ -1737,7 +1778,98 @@ function MaintenanceView({ serverStatus, addToast, fetchStatus }) {
               </button>
             </div>
           </div>
+
+          {/* Windows Upgrade Automation Card */}
+          <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-xs flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[var(--md-sys-color-primary)]">desktop_windows</span>
+                Automação Windows (Update)
+              </span>
+              <button onClick={fetchWindowsStatus} disabled={winLoading} className="w-7 h-7 rounded-lg hover:bg-black/5 flex items-center justify-center">
+                <span className="material-symbols-outlined text-base">refresh</span>
+              </button>
+            </div>
+
+            {/* Status das ISOs e da VM */}
+            <div className="grid grid-cols-3 gap-2 text-[10px]">
+              <div className="p-2 rounded-xl bg-black/5 flex flex-col items-center justify-center text-center">
+                <span className="font-semibold text-gray-500">Win10 ISO</span>
+                <span className={`mt-1 px-1.5 py-0.5 rounded font-bold ${winStatus.isos?.win10 ? 'bg-green-500/10 text-green-600' : 'bg-red-500/10 text-red-600'}`}>
+                  {winStatus.isos?.win10 ? 'Disponível' : 'Ausente'}
+                </span>
+              </div>
+              <div className="p-2 rounded-xl bg-black/5 flex flex-col items-center justify-center text-center">
+                <span className="font-semibold text-gray-500">Win11 ISO</span>
+                <span className={`mt-1 px-1.5 py-0.5 rounded font-bold ${winStatus.isos?.win11 ? 'bg-green-500/10 text-green-600' : 'bg-red-500/10 text-red-600'}`}>
+                  {winStatus.isos?.win11 ? 'Disponível' : 'Ausente'}
+                </span>
+              </div>
+              <div className="p-2 rounded-xl bg-black/5 flex flex-col items-center justify-center text-center">
+                <span className="font-semibold text-gray-500">VM de Testes</span>
+                <span className={`mt-1 px-1.5 py-0.5 rounded font-bold ${winStatus.vmRunning ? 'bg-green-500/10 text-green-600' : 'bg-gray-500/10 text-gray-500'}`}>
+                  {winStatus.vmRunning ? 'Online' : 'Offline'}
+                </span>
+              </div>
+            </div>
+
+            {/* Controles da VM */}
+            <div className="flex gap-2">
+              <button 
+                onClick={() => toggleWinVm('start_vm')} 
+                disabled={winLoading || winStatus.vmRunning} 
+                className="btn-primary py-2 px-3 rounded-xl font-bold flex-1 flex items-center justify-center gap-1"
+              >
+                <span className="material-symbols-outlined text-sm">play_arrow</span>
+                <span>Ligar VM</span>
+              </button>
+              <button 
+                onClick={() => toggleWinVm('stop_vm')} 
+                disabled={winLoading || !winStatus.vmRunning} 
+                className="btn-danger py-2 px-3 rounded-xl font-bold flex-1 flex items-center justify-center gap-1"
+              >
+                <span className="material-symbols-outlined text-sm">stop</span>
+                <span>Desligar VM</span>
+              </button>
+            </div>
+
+            {/* Relatório das Máquinas da Rede */}
+            <div className="space-y-1.5">
+              <span className="font-semibold text-[10px] text-[var(--md-sys-color-on-surface-variant)] block">
+                Relatórios de Atualização da Rede ({winStatus.reports?.length || 0})
+              </span>
+              <div className="max-h-[150px] overflow-y-auto border border-[var(--md-sys-color-surface-variant)] rounded-xl divide-y divide-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)]">
+                {!winStatus.reports || winStatus.reports.length === 0 ? (
+                  <div className="p-3 text-center text-gray-500 text-[10px]">
+                    Nenhum relatório de máquina encontrado.
+                  </div>
+                ) : (
+                  winStatus.reports.map((rep, idx) => (
+                    <div key={idx} className="p-2 flex items-start justify-between gap-2 text-[10px] hover:bg-black/5 transition-colors">
+                      <div className="space-y-0.5 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-[var(--md-sys-color-on-surface)] truncate">{rep.hostname}</span>
+                          <span className="text-gray-400 font-mono text-[9px]">({rep.oldBuild})</span>
+                        </div>
+                        <p className="text-gray-500 truncate text-[9px]">{rep.message}</p>
+                      </div>
+                      <div className="text-right flex-shrink-0 space-y-0.5">
+                        <span className={`px-1.5 py-0.5 rounded font-bold text-[9px] ${
+                          rep.status === 'SUCESSO' ? 'bg-green-500/10 text-green-600' :
+                          rep.status === 'IGNORADO' ? 'bg-gray-500/10 text-gray-500' : 'bg-red-500/10 text-red-600'
+                        }`}>
+                          {rep.status}
+                        </span>
+                        <span className="block text-[8px] text-gray-400 font-mono">{rep.date} {rep.time}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
         </div>
+
 
         {/* Live Output */}
         <div className="flex flex-col bg-black text-green-400 p-3 rounded-2xl font-mono text-[11px] min-h-[200px] max-h-[300px] overflow-auto">
