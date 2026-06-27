@@ -118,9 +118,9 @@ export default function DashboardPage() {
     { id: 'cockpit', name: 'Cockpit', icon: 'web', type: 'static', port: 9090, protocol: 'https:', skipIframe: true },
     { id: 'cups', name: 'Impressora', icon: 'print', type: 'service', serviceName: 'cups', port: 631, skipIframe: true },
     { id: 'scanner', name: 'Scanner', icon: 'document_scanner', type: 'service', serviceName: 'scanner', port: 8080 },
-    { id: 'metabase', name: 'BI Metabase', icon: 'analytics', type: 'service', serviceName: 'portal', port: 3003, skipIframe: true },
-    { id: 'jupyter', name: 'Jupyter Spark', icon: 'science', type: 'service', serviceName: 'portal', port: 8888, skipIframe: true },
-    { id: 'onlyoffice', name: 'Documentos', icon: 'description', type: 'service', serviceName: 'portal', port: 8086, path: '/example', skipIframe: true },
+    { id: 'metabase',   name: 'BI Metabase',   icon: 'analytics',       type: 'service', serviceName: 'srv_metabase',      port: 3003, skipIframe: true },
+    { id: 'jupyter',    name: 'Jupyter Spark',  icon: 'science',         type: 'service', serviceName: 'srv_jupyter_spark', port: 8888, skipIframe: true },
+    { id: 'onlyoffice', name: 'Documentos',     icon: 'description',     type: 'service', serviceName: 'srv_onlyoffice',    port: 8086, path: '/example', skipIframe: true },
     { id: 'emulator', name: 'Android Emulator', icon: 'phone_android', type: 'service', serviceName: 'emulator', port: 6081 },
     { id: 'jarvis', name: 'Jarvis', icon: 'smart_toy', type: 'service', serviceName: 'jarvis', port: 3010 }
   ];
