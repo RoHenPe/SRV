@@ -106,23 +106,23 @@ export default function DashboardPage() {
 
   // Sandbox Applications definitions
   const apps = [
-    { id: 'vscode', name: 'VS Code', icon: 'code', type: 'sandbox', port: 8443 },
-    { id: 'webtop', name: 'Webtop', icon: 'desktop_windows', type: 'sandbox', port: 3000 },
-    { id: 'steam', name: 'Steam', icon: 'sports_esports', type: 'sandbox', port: 8083 },
-    { id: 'filebrowser', name: 'Arquivos', icon: 'folder_open', type: 'sandbox', port: 8089 },
-    { id: 'kdenlive', name: 'Kdenlive', icon: 'movie', type: 'sandbox', port: 3005 },
-    { id: 'neovim', name: 'Neovim', icon: 'edit_note', type: 'sandbox', port: 7683 },
-    { id: 'antigravity', name: 'Antigravity SSH', icon: 'vpn_key', type: 'sandbox', port: 7685 },
-    { id: 'terminal', name: 'Terminal', icon: 'terminal', type: 'sandbox', port: 7682 },
-    { id: 'ttyd', name: 'Monitor', icon: 'monitoring', type: 'service', serviceName: 'ttyd', port: 7681 },
-    { id: 'cockpit', name: 'Cockpit', icon: 'web', type: 'static', port: 9090, protocol: 'https:', skipIframe: true },
-    { id: 'cups', name: 'Impressora', icon: 'print', type: 'service', serviceName: 'cups', port: 631, skipIframe: true },
-    { id: 'scanner', name: 'Scanner', icon: 'document_scanner', type: 'service', serviceName: 'scanner', port: 8080 },
-    { id: 'metabase',   name: 'BI Metabase',   icon: 'analytics',       type: 'service', serviceName: 'srv_metabase',      port: 3003, skipIframe: true },
-    { id: 'jupyter',    name: 'Jupyter Spark',  icon: 'science',         type: 'service', serviceName: 'srv_jupyter_spark', port: 8888, skipIframe: true },
-    { id: 'onlyoffice', name: 'Documentos',     icon: 'description',     type: 'service', serviceName: 'srv_onlyoffice',    port: 8086, path: '/example', skipIframe: true },
-    { id: 'emulator', name: 'Android Emulator', icon: 'phone_android', type: 'service', serviceName: 'emulator', port: 6081 },
-    { id: 'jarvis', name: 'Jarvis', icon: 'smart_toy', type: 'service', serviceName: 'jarvis', port: 3010 }
+    { id: 'vscode',      name: 'VS Code',            icon: 'code',              type: 'sandbox', port: 8443 },
+    { id: 'webtop',      name: 'Webtop',              icon: 'desktop_windows',   type: 'sandbox', port: 3000 },
+    { id: 'steam',       name: 'Steam',               icon: 'sports_esports',    type: 'sandbox', port: 8083 },
+    { id: 'filebrowser', name: 'Arquivos',             icon: 'folder_open',       type: 'sandbox', port: 8089 },
+    { id: 'kdenlive',    name: 'Kdenlive',             icon: 'movie',             type: 'sandbox', port: 3005 },
+    { id: 'neovim',      name: 'Neovim',               icon: 'edit_note',         type: 'sandbox', port: 7683 },
+    { id: 'antigravity', name: 'Antigravity SSH',      icon: 'vpn_key',           type: 'sandbox', port: 7685 },
+    { id: 'terminal',    name: 'Terminal',             icon: 'terminal',          type: 'sandbox', port: 7682 },
+    { id: 'ttyd',        name: 'Monitor',              icon: 'monitoring',        type: 'service', serviceName: 'ttyd',             containerName: 'srv_dashboard',      port: 7681 },
+    { id: 'cockpit',     name: 'Cockpit',              icon: 'web',               type: 'static',  port: 9090, protocol: 'https:', skipIframe: true },
+    { id: 'cups',        name: 'Impressora',           icon: 'print',             type: 'service', serviceName: 'cups',             containerName: 'cupsd',              port: 631,  skipIframe: true },
+    { id: 'scanner',     name: 'Scanner',              icon: 'document_scanner',  type: 'service', serviceName: 'scanner',          containerName: 'scanservjs',         port: 8080 },
+    { id: 'metabase',    name: 'BI Metabase',          icon: 'analytics',         type: 'service', serviceName: 'srv_metabase',     containerName: 'srv_metabase',       port: 3003, skipIframe: true },
+    { id: 'jupyter',     name: 'Jupyter Spark',        icon: 'science',           type: 'service', serviceName: 'srv_jupyter_spark',containerName: 'srv_jupyter_spark',  port: 8888, skipIframe: true },
+    { id: 'onlyoffice',  name: 'Documentos',           icon: 'description',       type: 'service', serviceName: 'srv_onlyoffice',   containerName: 'srv_onlyoffice',     port: 8086, path: '/example', skipIframe: true },
+    { id: 'emulator',    name: 'Android Emulator',     icon: 'phone_android',     type: 'service', serviceName: 'emulator',         containerName: 'android-container',  port: 6081 },
+    { id: 'jarvis',      name: 'Jarvis',               icon: 'smart_toy',         type: 'service', serviceName: 'jarvis',           containerName: 'open-webui',         port: 3010 },
   ];
 
   // Auth check
@@ -216,21 +216,10 @@ export default function DashboardPage() {
 
   const isRunning = useCallback((app) => {
     if (!serverStatus?.runningContainers) return false;
-    let containerName = `srv_${app.id}_sandbox`;
-    if (app.id === 'filebrowser') containerName = 'srv_filebrowser';
-    else if (app.id === 'antigravity') containerName = 'srv_ag_sandbox';
-    else if (app.id === 'neovim') containerName = 'srv_nvim_sandbox';
-    else if (app.id === 'jarvis') containerName = 'open-webui';
-    else if (app.id === 'cups') containerName = 'cupsd';
-    else if (app.id === 'scanner') containerName = 'scanservjs';
-    else if (app.id === 'ttyd') containerName = 'srv_dashboard';
-    else if (app.id === 'metabase') containerName = 'srv_metabase';
-    else if (app.id === 'jupyter') containerName = 'srv_jupyter_spark';
-    else if (app.id === 'onlyoffice') containerName = 'srv_onlyoffice';
-    else if (app.id === 'emulator') containerName = 'android-container';
-    else if (app.type === 'static') return true;
-
-    return serverStatus.runningContainers.some(c => 
+    if (app.type === 'static') return true;
+    // Use containerName from app definition when available, fallback to sandbox pattern
+    const containerName = app.containerName || `srv_${app.id}_sandbox`;
+    return serverStatus.runningContainers.some(c =>
       c.toLowerCase() === containerName.toLowerCase() || c.toLowerCase().includes(containerName.toLowerCase())
     );
   }, [serverStatus]);
@@ -242,28 +231,28 @@ export default function DashboardPage() {
     setIframeUrl('');
     setMobileMenuOpen(false);
     
-    const isIPOrLocalhost = (h) => {
-      if (h === 'localhost' || h === '127.0.0.1') return true;
-      return /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(h) || h.endsWith('.local');
-    };
-    
-    const isLocal = isIPOrLocalhost(window.location.hostname);
-    const host = isLocal 
-      ? window.location.hostname 
-      : (serverStatus?.host || window.location.hostname);
-      
-    const protocol = app.protocol || 'http:';
-    const path = app.path || '';
-    const targetUrl = `${protocol}//${host}:${app.port}${path}`;
+    // ALWAYS use the server's own IP for container URLs.
+    // Containers run on the server — NOT on the browser's machine.
+    // serverStatus.host is the IP that SSH successfully connected to (LAN or VPN).
+    const serverHost = serverStatus?.host || '192.168.15.109';
+    const protocol  = app.protocol || 'http:';
+    const path      = app.path || '';
+    const targetUrl = `${protocol}//${serverHost}:${app.port}${path}`;
 
-    // Helper checking if a container name is running
+    // Helper: check if a specific container is running
     const isContainerRunning = (name) => {
       if (!serverStatus?.runningContainers) return false;
-      return serverStatus.runningContainers.some(c => 
+      return serverStatus.runningContainers.some(c =>
         c.toLowerCase() === name.toLowerCase() || c.toLowerCase().includes(name.toLowerCase())
       );
     };
 
+    // Resolve the final URL: if accessing from Vercel (not LAN), use ngrok tunnel
+    const isIPOrLocalhost = (h) => {
+      if (h === 'localhost' || h === '127.0.0.1') return true;
+      return /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(h) || h.endsWith('.local');
+    };
+    const isLocal = isIPOrLocalhost(window.location.hostname);
     const resolveUrl = async () => {
       if (!isLocal) {
         setLaunchMessage('Iniciando...');
@@ -317,28 +306,20 @@ export default function DashboardPage() {
         setActiveTab('home');
       }
     } 
-    // If it's a docker compose service, verify if it's running
+    // Docker Compose service — check by containerName (defined in apps array)
     else if (app.type === 'service') {
-      let isRunning = false;
-      if (app.id === 'jarvis') isRunning = isContainerRunning('open-webui');
-      else if (app.id === 'cups') isRunning = isContainerRunning('cupsd');
-      else if (app.id === 'scanner') isRunning = isContainerRunning('scanservjs');
-      else if (app.id === 'ttyd') isRunning = isContainerRunning('srv_dashboard');
-      else if (app.id === 'metabase') isRunning = isContainerRunning('srv_metabase');
-      else if (app.id === 'jupyter') isRunning = isContainerRunning('srv_jupyter_spark');
-      else if (app.id === 'onlyoffice') isRunning = isContainerRunning('srv_onlyoffice');
-      else if (app.id === 'emulator') isRunning = isContainerRunning('android-container');
+      const containerName = app.containerName || `srv_${app.id}`;
+      const running = isContainerRunning(containerName);
 
-      if (isRunning) {
+      if (running) {
         setLaunching(true);
         const finalUrl = await resolveUrl();
         setIframeUrl(finalUrl);
         setLaunching(false);
       } else {
-        // If not running, prompt user to start service
         if (window.confirm(`O serviço ${app.name} não está ativo. Deseja iniciá-lo agora?`)) {
           setLaunching(true);
-          setLaunchMessage('Iniciando...');
+          setLaunchMessage(`Iniciando ${app.name}...`);
           try {
             const res = await apiFetch('/api/services', {
               method: 'POST',
