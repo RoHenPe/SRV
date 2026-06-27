@@ -476,6 +476,7 @@ export default function DashboardPage() {
               {[
                 { id: 'home', name: 'Início', icon: 'home' },
                 { id: 'docker', name: 'Docker', icon: 'view_in_ar' },
+                { id: 'vm', name: 'VM', icon: 'computer' },
                 { id: 'ia', name: 'IA', icon: 'psychology' },
                 { id: 'backup', name: 'Backup', icon: 'cloud_sync' },
                 { id: 'users', name: 'Contas', icon: 'group' },
@@ -547,6 +548,7 @@ export default function DashboardPage() {
 
             {activeTab === 'home' && <HomeView apps={apps} selectApp={selectApp} serverStatus={serverStatus} addToast={addToast} fetchStatus={fetchStatus} isRunning={isRunning} />}
             {activeTab === 'docker' && <DockerView addToast={addToast} />}
+            {activeTab === 'vm' && <VmView serverStatus={serverStatus} addToast={addToast} />}
             {activeTab === 'ia' && <IaHubView addToast={addToast} />}
             {activeTab === 'backup' && <BackupView serverStatus={serverStatus} addToast={addToast} />}
             {activeTab === 'users' && <UsersView addToast={addToast} />}
@@ -1648,39 +1650,12 @@ function UsersView({ addToast }) {
           <input
             type="text"
             value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="Usuário"
-            disabled={loading}
-            required
-            className="w-full bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3 py-2 outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] text-xs"
-          />
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Senha"
-            disabled={loading}
-            required
-            className="w-full bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3 py-2 outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] text-xs"
-          />
-          <button type="submit" disabled={loading} className="w-full btn-primary py-2 px-4 rounded-xl font-bold flex items-center justify-center gap-1.5">
-            <span className="material-symbols-outlined text-sm">save</span>
-            <span>Salvar</span>
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-// ─── MAINTENANCE VIEW ───────────────────────────────────────────────────────
+            onChange// ─── MAINTENANCE VIEW ───────────────────────────────────────────────────────
 function MaintenanceView({ serverStatus, addToast, fetchStatus }) {
   const [output, setOutput] = useState('');
   const [loading, setLoading] = useState(false);
   const [vpnLoading, setVpnLoading] = useState(false);
   const [vpnStatus, setVpnStatus] = useState('');
-  const [winStatus, setWinStatus] = useState({ isos: { win10: false, win11: false }, vmRunning: false, reports: [] });
-  const [winLoading, setWinLoading] = useState(false);
 
   const runMaintenance = async (action, title) => {
     if (!window.confirm(`Executar: ${title}?`)) return;
@@ -1710,19 +1685,6 @@ function MaintenanceView({ serverStatus, addToast, fetchStatus }) {
     setVpnLoading(false);
   }, []);
 
-  const fetchWindowsStatus = useCallback(async () => {
-    setWinLoading(true);
-    try {
-      const data = await apiFetch('/api/maintenance/windows');
-      if (data.ok) {
-        setWinStatus(data);
-      }
-    } catch {
-      addToast('Erro ao obter status do Windows.', 'error');
-    }
-    setWinLoading(false);
-  }, [addToast]);
-
   const toggleVpn = async (action) => {
     if (!window.confirm(`Deseja ${action === 'start' ? 'ativar' : 'desativar'} a VPN?`)) return;
     
@@ -1747,33 +1709,9 @@ function MaintenanceView({ serverStatus, addToast, fetchStatus }) {
     setVpnLoading(false);
   };
 
-  const toggleWinVm = async (action) => {
-    const title = action === 'start_vm' ? 'Iniciar VM de Testes' : 'Parar VM de Testes';
-    if (!window.confirm(`Deseja ${title}?`)) return;
-
-    setWinLoading(true);
-    try {
-      const data = await apiFetch('/api/maintenance/windows', {
-        method: 'POST',
-        body: JSON.stringify({ action })
-      });
-      if (data.ok) {
-        addToast(`${title} executado!`, 'success');
-        setOutput(data.output || data.message || 'Concluído.');
-        setTimeout(fetchWindowsStatus, 3000);
-      } else {
-        addToast(data.error || 'Erro ao executar.', 'error');
-      }
-    } catch {
-      addToast('Erro de rede.', 'error');
-    }
-    setWinLoading(false);
-  };
-
   useEffect(() => {
     getVpnStatus();
-    fetchWindowsStatus();
-  }, [getVpnStatus, fetchWindowsStatus]);
+  }, [getVpnStatus]);
 
   return (
     <div className="space-y-4 text-xs">
@@ -1824,8 +1762,76 @@ function MaintenanceView({ serverStatus, addToast, fetchStatus }) {
               </button>
             </div>
           </div>
+        </div>
 
-          {/* Windows Upgrade Automation Card */}
+        {/* Live Output */}
+        <div className="flex flex-col bg-black text-green-400 p-3 rounded-2xl font-mono text-[11px] min-h-[200px] max-h-[300px] overflow-auto">
+          {loading ? (
+            <div className="flex items-center gap-2 animate-pulse">
+              <span className="animate-spin material-symbols-outlined text-sm">sync</span>
+              <span>Executando...</span>
+            </div>
+          ) : (
+            <pre className="whitespace-pre-wrap">{output || 'Saída do console...'}</pre>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── VM VIEW (Windows Update Automation) ────────────────────────────────────
+function VmView({ serverStatus, addToast }) {
+  const [output, setOutput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [winStatus, setWinStatus] = useState({ isos: { win10: false, win11: false }, vmRunning: false, reports: [] });
+  const [winLoading, setWinLoading] = useState(false);
+
+  const fetchWindowsStatus = useCallback(async () => {
+    setWinLoading(true);
+    try {
+      const data = await apiFetch('/api/maintenance/windows');
+      if (data.ok) {
+        setWinStatus(data);
+      }
+    } catch {
+      addToast('Erro ao obter status do Windows.', 'error');
+    }
+    setWinLoading(false);
+  }, [addToast]);
+
+  const toggleWinVm = async (action) => {
+    const title = action === 'start_vm' ? 'Iniciar VM de Testes' : 'Parar VM de Testes';
+    if (!window.confirm(`Deseja ${title}?`)) return;
+
+    setWinLoading(true);
+    try {
+      const data = await apiFetch('/api/maintenance/windows', {
+        method: 'POST',
+        body: JSON.stringify({ action })
+      });
+      if (data.ok) {
+        addToast(`${title} executado!`, 'success');
+        setOutput(data.output || data.message || 'Concluído.');
+        setTimeout(fetchWindowsStatus, 3000);
+      } else {
+        addToast(data.error || 'Erro ao executar.', 'error');
+      }
+    } catch {
+      addToast('Erro de rede.', 'error');
+    }
+    setWinLoading(false);
+  };
+
+  useEffect(() => {
+    fetchWindowsStatus();
+  }, [fetchWindowsStatus]);
+
+  return (
+    <div className="space-y-4 text-xs">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Left Column: VM & ISOs Card */}
+        <div className="space-y-4">
           <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-3">
             <div className="flex items-center justify-between">
               <span className="font-semibold text-xs flex items-center gap-1.5">
@@ -1879,57 +1885,64 @@ function MaintenanceView({ serverStatus, addToast, fetchStatus }) {
               </button>
             </div>
 
-            {/* Relatório das Máquinas da Rede */}
-            <div className="space-y-1.5">
-              <span className="font-semibold text-[10px] text-[var(--md-sys-color-on-surface-variant)] block">
-                Relatórios de Atualização da Rede ({winStatus.reports?.length || 0})
-              </span>
-              <div className="max-h-[150px] overflow-y-auto border border-[var(--md-sys-color-surface-variant)] rounded-xl divide-y divide-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)]">
-                {!winStatus.reports || winStatus.reports.length === 0 ? (
-                  <div className="p-3 text-center text-gray-500 text-[10px]">
-                    Nenhum relatório de máquina encontrado.
-                  </div>
-                ) : (
-                  winStatus.reports.map((rep, idx) => (
-                    <div key={idx} className="p-2 flex items-start justify-between gap-2 text-[10px] hover:bg-black/5 transition-colors">
-                      <div className="space-y-0.5 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-bold text-[var(--md-sys-color-on-surface)] truncate">{rep.hostname}</span>
-                          <span className="text-gray-400 font-mono text-[9px]">({rep.oldBuild})</span>
-                        </div>
-                        <p className="text-gray-500 truncate text-[9px]">{rep.message}</p>
-                      </div>
-                      <div className="text-right flex-shrink-0 space-y-0.5">
-                        <span className={`px-1.5 py-0.5 rounded font-bold text-[9px] ${
-                          rep.status === 'SUCESSO' ? 'bg-green-500/10 text-green-600' :
-                          rep.status === 'IGNORADO' ? 'bg-gray-500/10 text-gray-500' : 'bg-red-500/10 text-red-600'
-                        }`}>
-                          {rep.status}
-                        </span>
-                        <span className="block text-[8px] text-gray-400 font-mono">{rep.date} {rep.time}</span>
-                      </div>
-                    </div>
-                  ))
-                )}
+            {/* VM Connection URL */}
+            {winStatus.vmRunning && (
+              <div className="bg-black/5 p-3 rounded-xl space-y-1.5 animate-fadeIn">
+                <span className="font-semibold text-[10px] text-[var(--md-sys-color-on-surface-variant)] block">URLs de Conexão:</span>
+                <div className="space-y-1 text-[10px] font-mono">
+                  <div>Web VNC: <a href={`http://${serverStatus?.host || '192.168.15.109'}:8006`} target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">http://{serverStatus?.host || '192.168.15.109'}:8006</a></div>
+                  <div>RDP: <span className="text-[var(--md-sys-color-on-surface)]">{serverStatus?.host || '192.168.15.109'}:3389</span></div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 
-
-        {/* Live Output */}
-        <div className="flex flex-col bg-black text-green-400 p-3 rounded-2xl font-mono text-[11px] min-h-[200px] max-h-[300px] overflow-auto">
-          {loading ? (
-            <div className="flex items-center gap-2 animate-pulse">
-              <span className="animate-spin material-symbols-outlined text-sm">sync</span>
-              <span>Executando...</span>
+        {/* Right Column: Console / Reports */}
+        <div className="space-y-4">
+          {/* Relatório das Máquinas da Rede */}
+          <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-3 flex flex-col h-full min-h-[300px]">
+            <span className="font-semibold text-xs text-[var(--md-sys-color-on-surface)] block">
+              Relatórios de Atualização da Rede ({winStatus.reports?.length || 0})
+            </span>
+            <div className="flex-1 overflow-y-auto border border-[var(--md-sys-color-surface-variant)] rounded-xl divide-y divide-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] max-h-[400px]">
+              {!winStatus.reports || winStatus.reports.length === 0 ? (
+                <div className="p-4 text-center text-gray-500 text-xs">
+                  Nenhum relatório de máquina encontrado.
+                </div>
+              ) : (
+                winStatus.reports.map((rep, idx) => (
+                  <div key={idx} className="p-3 flex items-start justify-between gap-3 hover:bg-black/5 transition-colors">
+                    <div className="space-y-0.5 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-[var(--md-sys-color-on-surface)] text-xs truncate">{rep.hostname}</span>
+                        <span className="text-gray-400 font-mono text-[10px]">({rep.oldBuild})</span>
+                      </div>
+                      <p className="text-gray-500 text-[10px] truncate max-w-xs">{rep.message}</p>
+                    </div>
+                    <div className="text-right flex-shrink-0 space-y-1">
+                      <span className={`px-2 py-0.5 rounded-full font-bold text-[9px] ${
+                        rep.status === 'SUCESSO' ? 'bg-green-500/10 text-green-600' :
+                        rep.status === 'IGNORADO' ? 'bg-gray-500/10 text-gray-500' : 'bg-red-500/10 text-red-600'
+                      }`}>
+                        {rep.status}
+                      </span>
+                      <span className="block text-[9px] text-gray-400 font-mono">{rep.date} {rep.time}</span>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
-          ) : (
-            <pre className="whitespace-pre-wrap">{output || 'Saída do console...'}</pre>
-          )}
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* Live Output */}
+      {output && (
+        <div className="flex flex-col bg-black text-green-400 p-3 rounded-2xl font-mono text-[11px] max-h-[150px] overflow-auto">
+          <pre className="whitespace-pre-wrap">{output}</pre>
+        </div>
+      )}
   );
 }
 
