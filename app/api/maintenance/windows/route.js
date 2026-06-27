@@ -4,9 +4,9 @@ import { runSSH, apiHandler } from '@/lib/ssh';
 export async function GET(request) {
   return apiHandler(
     async () => {
-      // 1. Verifica existência das ISOs
+      // 1. Verifica existência das ISOs (dentro do diretório Docker win10-deploy)
       const isoCheck = await runSSH(
-        '[ -f ~/BK/ISOs/Win10.iso ] && echo "win10:true" || echo "win10:false"; [ -f ~/BK/ISOs/Win11.iso ] && echo "win11:true" || echo "win11:false"'
+        '[ -f ~/win10-deploy/BK/ISOs/Win10.iso ] && echo "win10:true" || echo "win10:false"; [ -f ~/win10-deploy/BK/ISOs/Win11.iso ] && echo "win11:true" || echo "win11:false"'
       );
       const isoOutput = isoCheck.stdout || '';
       const hasWin10 = isoOutput.includes('win10:true');
@@ -20,7 +20,7 @@ export async function GET(request) {
 
       // 3. Lê todos os relatórios de rede (*_relatorio.csv)
       const reportsCheck = await runSSH(
-        'cat ~/BK/Relatorios/*_relatorio.csv 2>/dev/null || true'
+        'cat ~/win10-deploy/BK/Relatorios/*_relatorio.csv 2>/dev/null || true'
       );
       const reportsRaw = reportsCheck.stdout || '';
       const reports = [];
