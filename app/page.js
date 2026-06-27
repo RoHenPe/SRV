@@ -1650,7 +1650,32 @@ function UsersView({ addToast }) {
           <input
             type="text"
             value={username}
-            onChange// ─── MAINTENANCE VIEW ───────────────────────────────────────────────────────
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Usuário"
+            disabled={loading}
+            required
+            className="w-full bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3 py-2 outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] text-xs"
+          />
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Senha"
+            disabled={loading}
+            required
+            className="w-full bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3 py-2 outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] text-xs"
+          />
+          <button type="submit" disabled={loading} className="w-full btn-primary py-2 px-4 rounded-xl font-bold flex items-center justify-center gap-1.5">
+            <span className="material-symbols-outlined text-sm">save</span>
+            <span>Salvar</span>
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── MAINTENANCE VIEW ───────────────────────────────────────────────────────
 function MaintenanceView({ serverStatus, addToast, fetchStatus }) {
   const [output, setOutput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -1943,6 +1968,7 @@ function VmView({ serverStatus, addToast }) {
           <pre className="whitespace-pre-wrap">{output}</pre>
         </div>
       )}
+    </div>
   );
 }
 
