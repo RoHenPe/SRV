@@ -1421,6 +1421,7 @@ function IaHubView({ addToast }) {
 function BackupView({ serverStatus, addToast }) {
   const [output, setOutput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [photosLoading, setPhotosLoading] = useState(false);
 
   const runBackup = async () => {
     setLoading(true);
@@ -1437,23 +1438,68 @@ function BackupView({ serverStatus, addToast }) {
     setLoading(false);
   };
 
+  const runPhotosBackup = async () => {
+    setPhotosLoading(true);
+    setOutput('');
+    try {
+      const data = await apiFetch('/api/backup/photos', { method: 'POST' });
+      setOutput(data.output || data.message || 'Concluído.');
+      if (data.ok) {
+        addToast('Sincronização de fotos concluída!', 'success');
+        if (data.url) {
+          window.open(data.url, '_blank');
+        }
+      } else {
+        addToast(data.error || 'Falha na sincronização.', 'error');
+      }
+    } catch {
+      setOutput('Erro de processamento no servidor remoto.');
+      addToast('Erro na sincronização de fotos.', 'error');
+    }
+    setPhotosLoading(false);
+  };
+
   return (
     <div className="space-y-4 text-xs">
-      <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <span className="material-symbols-outlined text-[var(--md-sys-color-primary)]">cloud_sync</span>
-          <span className="font-semibold text-xs">Backup Geral</span>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Backup Geral */}
+        <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-[var(--md-sys-color-primary)]">cloud_sync</span>
+            <span className="font-semibold text-xs">Backup Geral</span>
+          </div>
+          <button onClick={runBackup} disabled={loading || photosLoading} className="btn-primary py-2 px-4 rounded-xl font-bold flex items-center gap-1">
+            {loading ? (
+              <span className="animate-spin material-symbols-outlined text-base">autorenew</span>
+            ) : (
+              <>
+                <span className="material-symbols-outlined text-base">play_arrow</span>
+                <span>Iniciar</span>
+              </>
+            )}
+          </button>
         </div>
-        <button onClick={runBackup} disabled={loading} className="btn-primary py-2 px-4 rounded-xl font-bold flex items-center gap-1">
-          {loading ? (
-            <span className="animate-spin material-symbols-outlined text-base">autorenew</span>
-          ) : (
-            <>
-              <span className="material-symbols-outlined text-base">play_arrow</span>
-              <span>Iniciar</span>
-            </>
-          )}
-        </button>
+
+        {/* Google Fotos */}
+        <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-[var(--md-sys-color-primary)]">photo_library</span>
+            <div className="flex flex-col">
+              <span className="font-semibold text-xs">Sincronização Google Fotos</span>
+              <span className="text-[9px] text-gray-500">Requer autenticação via Webtop</span>
+            </div>
+          </div>
+          <button onClick={runPhotosBackup} disabled={loading || photosLoading} className="btn-primary py-2 px-4 rounded-xl font-bold flex items-center gap-1">
+            {photosLoading ? (
+              <span className="animate-spin material-symbols-outlined text-base">autorenew</span>
+            ) : (
+              <>
+                <span className="material-symbols-outlined text-base">sync</span>
+                <span>Sincronizar</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
