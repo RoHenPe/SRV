@@ -107,7 +107,7 @@ export default function DashboardPage() {
   // Sandbox Applications definitions
   const apps = [
     { id: 'vscode',      name: 'VS Code',            icon: 'code',              type: 'sandbox', port: 8443 },
-    { id: 'webtop',      name: 'Webtop',              icon: 'desktop_windows',   type: 'sandbox', port: 3000 },
+    { id: 'webtop',      name: 'Webtop',              icon: 'desktop_windows',   type: 'sandbox', port: 3001, protocol: 'https:' },
     { id: 'steam',       name: 'Steam',               icon: 'sports_esports',    type: 'sandbox', port: 8083 },
     { id: 'filebrowser', name: 'Arquivos',             icon: 'folder_open',       type: 'sandbox', port: 8089 },
     { id: 'kdenlive',    name: 'Kdenlive',             icon: 'movie',             type: 'sandbox', port: 3005 },
