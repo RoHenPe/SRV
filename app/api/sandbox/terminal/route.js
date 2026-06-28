@@ -1,15 +1,16 @@
 import { runSSH, getTargetHost, apiHandler } from '@/lib/ssh';
 
-// POST /api/sandbox/terminal — Inicia ttyd sandbox container e retorna URL
+// POST /api/sandbox/terminal — Inicia ttyd bash sandbox e retorna URL
 export async function POST(request) {
   return apiHandler(
     async () => {
-      // Remove container anterior se existir
+      // Remove container antigo ou processos ttyd na porta 7682 se existirem
       await runSSH("sudo docker rm -f srv_terminal_sandbox || true");
-      // Inicia terminal sandbox conectando ao terminal do servidor local via SSH
-      await runSSH(
-        "sudo docker run -d --rm --name srv_terminal_sandbox --network host -v /home/rodrigo/.ssh:/home/rodrigo/.ssh:ro srv-dashboard-srv-dashboard:latest ttyd -W -p 7682 ssh -o StrictHostKeyChecking=no rodrigo@127.0.0.1"
-      );
+      await runSSH("pkill -f 'ttyd -W -p 7682' || true");
+      
+      // Inicia ttyd com bash nativo do host em segundo plano
+      await runSSH("nohup ttyd -W -p 7682 /bin/bash > /dev/null 2>&1 &");
+      
       const host = getTargetHost();
       return {
         ok: true,
