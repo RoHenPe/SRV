@@ -10,7 +10,15 @@ export async function POST(request) {
         "sudo docker run -d --name=srv_webtop_sandbox -e PASSWORD=\"\" " +
         "-p 3000:3000 -p 3001:3001 -p 9222:9222 " +
         "-v /home/rodrigo/webtop_config:/config -v /home/rodrigo:/storage " +
-        "--shm-size=2gb srv-webtop-antigravity:latest"
+        "--shm-size=2gb srv-webtop-antigravity:latest && " +
+        "for i in {1..10}; do " +
+        "  if sudo docker exec srv_webtop_sandbox test -f /etc/nginx/sites-available/default; then " +
+        "    sudo docker exec srv_webtop_sandbox sed -i 's/auth_basic/#auth_basic/g' /etc/nginx/sites-available/default && " +
+        "    sudo docker exec srv_webtop_sandbox nginx -s reload && " +
+        "    exit 0; " +
+        "  fi; " +
+        "  sleep 1; " +
+        "done"
       );
       const host = getTargetHost();
       return {
