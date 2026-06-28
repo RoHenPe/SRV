@@ -4,10 +4,14 @@ import { runSSH, getTargetHost, apiHandler } from '@/lib/ssh';
 export async function POST(request) {
   return apiHandler(
     async () => {
-      // Para qualquer ttyd rodando no interpreter
-      await runSSH("pkill -f 'ttyd -W -p 7685' || true");
-      // Inicia ttyd com interpreter no host
-      await runSSH("nohup ttyd -W -p 7685 /home/rodrigo/.local/bin/interpreter > /dev/null 2>&1 &");
+      // Remove container anterior
+      await runSSH("sudo docker rm -f srv_ag_sandbox || true");
+      // Inicia ttyd rodando no Alpine Docker com redirecionamento SSH interativo para o agente
+      await runSSH(
+        "sudo docker run -d --rm --name srv_ag_sandbox --network host " +
+        "-v /home/rodrigo/.ssh:/home/rodrigo/.ssh:ro alpine:latest " +
+        "sh -c 'apk add --no-cache ttyd openssh-client && ttyd -W -p 7685 ssh -o StrictHostKeyChecking=no -t rodrigo@127.0.0.1 /home/rodrigo/.local/bin/antigravity'"
+      );
       const host = getTargetHost();
       return {
         ok: true,
