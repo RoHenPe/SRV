@@ -259,7 +259,8 @@ export default function DashboardPage() {
         try {
           const tunRes = await apiFetch('/api/tunnel', { method: 'POST', body: JSON.stringify({ port: app.port, protocol: app.protocol || 'http:' }) });
           if (tunRes.ok && tunRes.url) {
-            return tunRes.url + path;
+            const separator = (tunRes.url + path).includes('?') ? '&' : '?';
+            return tunRes.url + path + separator + '_t=' + Date.now();
           }
         } catch (e) {}
       }
