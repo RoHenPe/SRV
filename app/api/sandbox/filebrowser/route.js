@@ -4,10 +4,9 @@ import { runSSH, getTargetHost, apiHandler } from '@/lib/ssh';
 export async function POST(request) {
   return apiHandler(
     async () => {
-      // Remove container anterior se existir
-      await runSSH("sudo docker rm -f srv_filebrowser || true");
-      // Inicia novo container File Browser com a flag --noauth para remover solicitações de senha
+      // Inicia novo container File Browser com a flag --noauth para remover solicitações de senha (removendo o antigo anteriormente)
       await runSSH(
+        "sudo docker rm -f srv_filebrowser || true && " +
         "sudo docker run -d --name srv_filebrowser -p 8089:80 -v /home/rodrigo:/srv filebrowser/filebrowser:latest --noauth -r /srv"
       );
       const host = getTargetHost();

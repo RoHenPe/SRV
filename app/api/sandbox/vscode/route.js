@@ -4,10 +4,9 @@ import { runSSH, getTargetHost, apiHandler } from '@/lib/ssh';
 export async function POST(request) {
   return apiHandler(
     async () => {
-      // Remove container antigo na porta 8443
-      await runSSH("sudo docker rm -f srv_vscode_sandbox || true");
-      // Inicia novo container de acordo com o srv.sh
+      // Inicia novo container de acordo com o srv.sh (removendo o antigo anteriormente)
       await runSSH(
+        "sudo docker rm -f srv_vscode_sandbox || true && " +
         "sudo docker run -d --rm -p 8443:3000 --name srv_vscode_sandbox gitpod/openvscode-server:latest --without-connection-token"
       );
       const host = getTargetHost();

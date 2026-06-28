@@ -4,10 +4,9 @@ import { runSSH, getTargetHost, apiHandler } from '@/lib/ssh';
 export async function POST(request) {
   return apiHandler(
     async () => {
-      // Remove container anterior se existir
-      await runSSH("sudo docker rm -f srv_kdenlive_sandbox || true");
-      // Inicia novo container
+      // Inicia novo container (removendo o antigo anteriormente)
       await runSSH(
+        "sudo docker rm -f srv_kdenlive_sandbox || true && " +
         "sudo docker run -d --name=srv_kdenlive_sandbox -e PASSWORD=\"\" " +
         "-p 3005:3000 -p 3006:3001 " +
         "-v /home/rodrigo/kdenlive_config:/config " +
