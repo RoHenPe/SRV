@@ -82,6 +82,12 @@ export async function GET(request) {
         runningContainers.push('srv_ag_sandbox');
       }
 
+      // Verifica se o terminal ttyd no host está ativo na porta 7682
+      const termResult = await runSSH('pgrep -f "ttyd -W -p 7682" || true');
+      if (termResult.stdout.trim()) {
+        runningContainers.push('srv_terminal_sandbox');
+      }
+
       const parsed = parseStatus(sysResult.stdout);
 
       return {
