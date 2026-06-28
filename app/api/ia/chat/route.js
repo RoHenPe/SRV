@@ -10,16 +10,26 @@ export async function POST(request) {
         throw new Error('Model and messages are required');
       }
 
+      // Langchain concept: Inject a context-aware system prompt template to improve response quality
+      const systemMessage = {
+        role: 'system',
+        content: 'Você é o assistente oficial do ROHENPER Dashboard, um painel de administração de servidor Linux doméstico rodando Ubuntu, Docker, túnel Bore e Tailscale. Auxilie o administrador a diagnosticar problemas, monitorar recursos (CPU/RAM/Disco), sugerir comandos e gerenciar serviços de forma profissional, direta e segura. Responda em formato markdown legível.'
+      };
+
+      const enrichedMessages = messages.some(m => m.role === 'system')
+        ? messages
+        : [systemMessage, ...messages];
+
       const jsonPayload = JSON.stringify({
         model,
-        messages,
+        messages: enrichedMessages,
         stream: false,
       });
 
       const b64Payload = Buffer.from(jsonPayload).toString('base64');
-      const tempFile = `/tmp/ollama_req_${Date.now()}_${Math.random().toString(36).substring(7)}.json`;
       
-      const cmd = `echo "${b64Payload}" | base64 -d > ${tempFile} && curl -s -X POST http://127.0.0.1:11434/api/chat -H "Content-Type: application/json" -d @${tempFile} ; status=$? ; rm -f ${tempFile} ; exit $status`;
+      // Efficient in-memory execution via curl stdin (no temp files created or disk IO on the remote server)
+      const cmd = `echo "${b64Payload}" | base64 -d | curl -s -X POST http://127.0.0.1:11434/api/chat -H "Content-Type: application/json" -d @-`;
       
       const result = await runSSH(cmd);
       if (result.code !== 0) {

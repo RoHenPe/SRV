@@ -8,9 +8,8 @@ export async function POST(request) {
       if (!prompt) throw new Error('O campo "prompt" é obrigatório.');
       
       const isAutonomous = mode === 'autonomous' || !mode;
-      const cmd = isAutonomous 
-        ? `/home/rodrigo/.local/bin/interpreter -y --prompt "${prompt.replace(/"/g, '\\"')}"`
-        : `/home/rodrigo/.local/bin/interpreter --prompt "${prompt.replace(/"/g, '\\"')}"`;
+      const b64Prompt = Buffer.from(prompt).toString('base64');
+      const cmd = `python3 -c "import base64, subprocess; p = base64.b64decode('${b64Prompt}').decode('utf-8'); args = ['/home/rodrigo/.local/bin/interpreter', '--prompt', p]; ${isAutonomous ? "args.insert(1, '-y'); " : ""}subprocess.run(args)"`;
         
       const result = await runSSH(cmd);
       return {
