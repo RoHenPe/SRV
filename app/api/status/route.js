@@ -68,31 +68,33 @@ function parseStatus(stdout) {
 export async function GET(request) {
   return apiHandler(
     async () => {
-      // Executa comandos no servidor (df -h sem barra para listar todos os discos)
-      const sysResult = await runSSH('uptime && free -m && df -h');
-      const dockerResult = await runSSH('sudo docker ps --format "{{.Names}}" || true');
+      // Executa comandos no servidor em uma única chamada SSH combinada
+      const combinedCmd = 'uptime && free -m && df -h && echo "===DOCKER===" && (sudo docker ps --format "{{.Names}}" || true) && echo "===TTYDS===" && (pgrep -f "ttyd -W -p 7685" || true) && echo "===TTYD_TERM===" && (pgrep -f "ttyd -W -p 7682" || true)';
+      const result = await runSSH(combinedCmd);
       
-      const runningContainers = dockerResult.stdout
-        ? dockerResult.stdout.split('\n').map(name => name.trim()).filter(Boolean)
+      const parts = result.stdout.split(/===[A-Z0-9_]+===/);
+      const sysStdout = parts[0] || '';
+      const dockerStdout = parts[1] || '';
+      const ttydStdout = parts[2] || '';
+      const ttydTermStdout = parts[3] || '';
+
+      const runningContainers = dockerStdout
+        ? dockerStdout.split('\n').map(name => name.trim()).filter(Boolean)
         : [];
 
-      // Verifica se o agente Antigravity no host está ativo na porta 7685
-      const agResult = await runSSH('pgrep -f "ttyd -W -p 7685" || true');
-      if (agResult.stdout.trim()) {
+      if (ttydStdout.trim()) {
         runningContainers.push('srv_ag_sandbox');
       }
 
-      // Verifica se o terminal ttyd no host está ativo na porta 7682
-      const termResult = await runSSH('pgrep -f "ttyd -W -p 7682" || true');
-      if (termResult.stdout.trim()) {
+      if (ttydTermStdout.trim()) {
         runningContainers.push('srv_terminal_sandbox');
       }
 
-      const parsed = parseStatus(sysResult.stdout);
+      const parsed = parseStatus(sysStdout);
 
       return {
-        online: sysResult.code === 0,
-        host: sysResult.host,
+        online: result.code === 0,
+        host: result.host,
         runningContainers,
         ...parsed
       };
