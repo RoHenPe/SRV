@@ -8,11 +8,11 @@ export async function POST(request) {
       await runSSH("sudo docker rm -f srv_terminal_sandbox || true");
       await runSSH("pkill -f 'ttyd -W -p 7682' || true");
       
-      // Inicia ttyd rodando no Alpine Docker com redirecionamento SSH para o bash do host
+      // Inicia ttyd usando a imagem srv-dashboard pré-configurada para início imediato
       await runSSH(
         "sudo docker run -d --rm --name srv_terminal_sandbox --network host " +
-        "-v /home/rodrigo/.ssh:/home/rodrigo/.ssh:ro alpine:latest " +
-        "sh -c 'apk add --no-cache ttyd openssh-client && ttyd -W -p 7682 ssh -o StrictHostKeyChecking=no rodrigo@127.0.0.1'"
+        "-v /home/rodrigo/.ssh:/home/rodrigo/.ssh:ro srv-dashboard-srv-dashboard:latest " +
+        "ttyd -W -p 7682 ssh -o StrictHostKeyChecking=no rodrigo@127.0.0.1"
       );
       
       const host = getTargetHost();
