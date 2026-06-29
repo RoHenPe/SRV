@@ -1405,19 +1405,41 @@ function BackupView({ serverStatus, addToast }) {
   const [loading, setLoading] = useState(false);
   const [photosLoading, setPhotosLoading] = useState(false);
 
+  // Poll status/logs every 3 seconds
+  useEffect(() => {
+    let active = true;
+    const fetchStatus = async () => {
+      try {
+        const data = await apiFetch('/api/backup/status');
+        if (active && data.ok) {
+          setOutput(data.log || '');
+          setLoading(data.running);
+        }
+      } catch (err) {
+        console.error('Failed to fetch backup status:', err);
+      }
+    };
+
+    fetchStatus(); // Fetch immediately on mount
+    const interval = setInterval(fetchStatus, 3000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, []);
+
   const runBackup = async () => {
-    setLoading(true);
-    setOutput('');
+    setOutput('Iniciando backup no servidor...');
     try {
       const data = await apiFetch('/api/backup/full', { method: 'POST' });
-      setOutput(data.output || data.message || 'Concluído.');
-      if (data.ok) addToast('Backup concluído!', 'success');
-      else addToast(data.error || 'Falha no backup.', 'error');
+      if (data.ok) {
+        addToast(data.message || 'Backup iniciado!', 'success');
+      } else {
+        addToast(data.error || 'Falha ao iniciar o backup.', 'error');
+      }
     } catch {
-      setOutput('Erro de processamento no servidor remoto.');
-      addToast('Erro no backup.', 'error');
+      addToast('Erro ao iniciar o backup.', 'error');
     }
-    setLoading(false);
   };
 
   const runPhotosBackup = async () => {
@@ -1506,15 +1528,14 @@ function BackupView({ serverStatus, addToast }) {
         )}
 
         {/* Console */}
-        <div className="flex flex-col bg-black text-green-400 p-3 rounded-2xl font-mono text-[11px] min-h-[150px] max-h-[250px] overflow-auto">
-          {loading ? (
-            <div className="flex items-center gap-2 animate-pulse">
-              <span className="animate-spin material-symbols-outlined text-sm">sync</span>
+        <div className="flex flex-col bg-black text-green-400 p-3 rounded-2xl font-mono text-[11px] min-h-[150px] max-h-[250px] overflow-auto relative">
+          {loading && (
+            <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-black/80 px-2 py-1 rounded-lg border border-green-500/20 text-[10px] animate-pulse">
+              <span className="animate-spin material-symbols-outlined text-[10px]">sync</span>
               <span>Sincronizando...</span>
             </div>
-          ) : (
-            <pre className="whitespace-pre-wrap">{output || 'Logs do backup...'}</pre>
           )}
+          <pre className="whitespace-pre-wrap">{output || 'Logs do backup...'}</pre>
         </div>
       </div>
     </div>

@@ -4,11 +4,24 @@ import { runSSH, apiHandler } from '@/lib/ssh';
 export async function POST(request) {
   return apiHandler(
     async () => {
-      const r1 = await runSSH('python3 ~/Automation/Apps/Backup/run_headless.py');
-      const r2 = await runSSH('python3 ~/Automation/Core/Scripts/Icloud.py');
+      // 1. Verifica se o backup já está rodando
+      const checkResult = await runSSH('pgrep -f "run_headless.py --worker" >/dev/null && echo "running" || echo "stopped"');
+      const running = checkResult.stdout.trim() === 'running';
+
+      if (running) {
+        return {
+          ok: true,
+          message: 'O backup já está em andamento no servidor remoto.',
+        };
+      }
+
+      // 2. Inicia o backup em segundo plano no servidor (worker logic)
+      // Isso libera a requisição HTTP imediatamente para evitar timeouts no Vercel
+      await runSSH('nohup python3 ~/Automation/Apps/Backup/run_headless.py --worker >/dev/null 2>&1 &');
+
       return {
-        message: 'Backup iniciado com sucesso.',
-        output: [r1.stdout, r2.stdout].filter(Boolean).join('\n'),
+        ok: true,
+        message: 'Backup geral iniciado com sucesso no servidor remoto.',
       };
     },
     request,
