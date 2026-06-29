@@ -1080,10 +1080,14 @@ function IaHubView({ addToast }) {
         if (parsed.length > 0 && !chatModel) {
           setChatModel(parsed[0].name);
         }
+      } else {
+        addToast(data.error || 'Erro ao carregar modelos da IA.', 'error');
       }
-    } catch {}
+    } catch {
+      addToast('Erro de rede ao carregar modelos da IA.', 'error');
+    }
     setModelsLoading(false);
-  }, [chatModel]);
+  }, [chatModel, addToast]);
 
   const fetchStatus = useCallback(async () => {
     setStatusLoading(true);
