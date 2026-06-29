@@ -120,7 +120,7 @@ export default function DashboardPage() {
     { id: 'scanner',     name: 'Scanner',              icon: 'document_scanner',  type: 'service', serviceName: 'scanner',          containerName: 'scanservjs',         port: 8080 },
     { id: 'metabase',    name: 'BI Metabase',          icon: 'analytics',         type: 'service', serviceName: 'srv_metabase',     containerName: 'srv_metabase',       port: 3003, skipIframe: true },
     { id: 'jupyter',     name: 'Jupyter Spark',        icon: 'science',           type: 'service', serviceName: 'srv_jupyter_spark',containerName: 'srv_jupyter_spark',  port: 8888, skipIframe: true },
-    { id: 'onlyoffice',  name: 'Documentos',           icon: 'description',       type: 'service', serviceName: 'srv_onlyoffice',   containerName: 'srv_onlyoffice',     port: 8086, path: '/example', skipIframe: true },
+    { id: 'onlyoffice',  name: 'Documentos',           icon: 'description',       type: 'service', serviceName: 'srv_onlyoffice',   containerName: 'srv_onlyoffice',     port: 8086, path: '/example/', skipIframe: true },
     { id: 'emulator',    name: 'Android Emulator',     icon: 'phone_android',     type: 'service', serviceName: 'emulator',         containerName: 'android-container',  port: 6081 },
     { id: 'jarvis',      name: 'Jarvis',               icon: 'smart_toy',         type: 'service', serviceName: 'jarvis',           containerName: 'open-webui',         port: 3010 },
   ];
