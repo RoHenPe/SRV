@@ -575,9 +575,7 @@ export default function DashboardPage() {
                 </div>
                 <div className="flex-1 bg-[var(--md-sys-color-background)] relative">
                   {iframeUrl ? (
-                    activeApp.id === 'antigravity' ? (
-                      <AntigravitySshView host={serverStatus?.host} addToast={addToast} />
-                    ) : activeApp.skipIframe ? (
+                    activeApp.skipIframe ? (
                       <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center space-y-3 max-w-xs mx-auto">
                         <h3 className="text-xs font-semibold text-[var(--md-sys-color-on-surface)]">
                           {activeApp.name}

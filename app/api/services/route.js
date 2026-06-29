@@ -14,7 +14,7 @@ export async function POST(request) {
       } else if (service === 'scanner') {
         const dir = '~/scanner-deploy';
         cmd = action === 'start' ? `cd ${dir} && sudo docker compose up -d` : `cd ${dir} && sudo docker compose down`;
-      } else if (service === 'portal') {
+      } else if (service === 'portal' || service === 'srv_onlyoffice' || service === 'srv_metabase' || service === 'srv_jupyter_spark') {
         const dir = '~/data-portal';
         cmd = action === 'start' ? `cd ${dir} && sudo docker compose up -d` : `cd ${dir} && sudo docker compose down`;
       } else if (service === 'emulator') {
