@@ -1,11 +1,51 @@
 import { runSSH, apiHandler } from '@/lib/ssh';
 
-// GET /api/vpn/status — status do Tailscale no servidor
+// GET /api/vpn/status — status do Tailscale no servidor (filtrado para privacidade)
 export async function GET(request) {
   return apiHandler(
     async () => {
       const result = await runSSH('tailscale status 2>&1 || echo "Tailscale não disponível"');
-      return { output: result.stdout };
+      const rawOutput = result.stdout || '';
+
+      const cleanRaw = rawOutput.trim();
+      let statusText = 'Status: Inativo\nDispositivos Ativos: 0';
+
+      const isInactive = 
+        !cleanRaw ||
+        cleanRaw.includes('Tailscale não disponível') ||
+        cleanRaw.includes('stopped') ||
+        cleanRaw.includes('failed to connect') ||
+        cleanRaw.includes('Tailscale is stopped');
+
+      if (!isInactive) {
+        const lines = cleanRaw.split('\n');
+        let activeSessions = 0;
+        let hasFunnel = false;
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+
+          // Verifica se o Funnel está ativo sem revelar a URL
+          if (trimmed.toLowerCase().includes('funnel on') || trimmed.toLowerCase().includes('funnel:')) {
+            hasFunnel = true;
+          }
+
+          // Filtra linhas de dispositivos pelo IP do Tailscale (100.x)
+          if (trimmed.startsWith('100.')) {
+            if (!trimmed.toLowerCase().includes('offline')) {
+              activeSessions++;
+            }
+          }
+        }
+
+        statusText = `Status: Ativo\nDispositivos Ativos: ${activeSessions}`;
+        if (hasFunnel) {
+          statusText += '\nFunnel Público: Ativo';
+        }
+      }
+
+      return { output: statusText };
     },
     request,
     'GET /api/vpn/status'
