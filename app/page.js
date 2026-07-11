@@ -615,7 +615,7 @@ export default function DashboardPage() {
                       </div>
                     ) : (
                       <>
-                        <iframe src={iframeUrl} className="w-full h-full border-0" allow="clipboard-read; clipboard-write; fullscreen" />
+                        <iframe src={iframeUrl} className="w-full h-full border-0" allow="autoplay; clipboard-read; clipboard-write; fullscreen" />
                         {typeof window !== 'undefined' && iframeUrl.includes('ngrok') && (
                           <div className="absolute bottom-4 left-4 right-4 bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] p-2.5 rounded-xl text-[10px] flex items-center justify-between gap-3 shadow z-10">
                             <div className="flex items-center gap-2">
