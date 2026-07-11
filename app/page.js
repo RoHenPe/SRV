@@ -112,16 +112,16 @@ export default function DashboardPage() {
     { id: 'filebrowser', name: 'Arquivos',             icon: 'folder_open',       type: 'sandbox', port: 8089 },
     { id: 'kdenlive',    name: 'Kdenlive',             icon: 'movie',             type: 'sandbox', port: 3005 },
     { id: 'neovim',      name: 'Neovim',               icon: 'edit_note',         type: 'sandbox', port: 7683 },
-    { id: 'antigravity', name: 'Antigravity SSH',      icon: 'vpn_key',           type: 'sandbox', port: 7685 },
+    { id: 'antigravity', name: 'Antigravity',          icon: 'vpn_key',           type: 'sandbox', port: 7685 },
     { id: 'terminal',    name: 'Terminal',             icon: 'terminal',          type: 'sandbox', port: 7682 },
     { id: 'ttyd',        name: 'Monitor',              icon: 'monitoring',        type: 'service', serviceName: 'ttyd',             containerName: 'srv_dashboard',      port: 7681 },
     { id: 'cockpit',     name: 'Cockpit',              icon: 'web',               type: 'static',  port: 9090, protocol: 'https:', skipIframe: true },
     { id: 'cups',        name: 'Impressora',           icon: 'print',             type: 'service', serviceName: 'cups',             containerName: 'cupsd',              port: 631,  skipIframe: true },
     { id: 'scanner',     name: 'Scanner',              icon: 'document_scanner',  type: 'service', serviceName: 'scanner',          containerName: 'scanservjs',         port: 8080 },
-    { id: 'metabase',    name: 'BI Metabase',          icon: 'analytics',         type: 'service', serviceName: 'srv_metabase',     containerName: 'srv_metabase',       port: 3003, skipIframe: true },
-    { id: 'jupyter',     name: 'Jupyter Spark',        icon: 'science',           type: 'service', serviceName: 'srv_jupyter_spark',containerName: 'srv_jupyter_spark',  port: 8888, skipIframe: true },
+    { id: 'metabase',    name: 'Metabase',             icon: 'analytics',         type: 'service', serviceName: 'srv_metabase',     containerName: 'srv_metabase',       port: 3003, skipIframe: true },
+    { id: 'jupyter',     name: 'Jupyter',              icon: 'science',           type: 'service', serviceName: 'srv_jupyter_spark',containerName: 'srv_jupyter_spark',  port: 8888, skipIframe: true },
     { id: 'onlyoffice',  name: 'Documentos',           icon: 'description',       type: 'service', serviceName: 'srv_onlyoffice',   containerName: 'srv_onlyoffice',     port: 8086, path: '/example/', skipIframe: true },
-    { id: 'emulator',    name: 'Android Emulator',     icon: 'phone_android',     type: 'service', serviceName: 'emulator',         containerName: 'android-container',  port: 6081 },
+    { id: 'emulator',    name: 'Android',              icon: 'phone_android',     type: 'service', serviceName: 'emulator',         containerName: 'android-container',  port: 6081 },
     { id: 'jarvis',      name: 'Jarvis',               icon: 'smart_toy',         type: 'service', serviceName: 'jarvis',           containerName: 'open-webui',         port: 3010 },
   ];
 
@@ -597,10 +597,10 @@ export default function DashboardPage() {
                         </div>
                         <div className="space-y-1">
                           <h3 className="text-sm font-semibold text-[var(--md-sys-color-on-surface)]">
-                            Conexão Externa Limitada
+                            Acesso via Bore
                           </h3>
                           <p className="text-[11px] text-[var(--md-sys-color-on-surface-variant)] leading-relaxed">
-                            Este serviço está sendo executado via túnel HTTP (Bore). Por segurança, o navegador não permite carregá-lo diretamente dentro do painel seguro (HTTPS).
+                            Por segurança do navegador, abra o serviço em uma nova aba.
                           </p>
                         </div>
                         <a 
@@ -617,14 +617,12 @@ export default function DashboardPage() {
                       <>
                         <iframe src={iframeUrl} className="w-full h-full border-0" allow="clipboard-read; clipboard-write; fullscreen" />
                         {typeof window !== 'undefined' && iframeUrl.includes('ngrok') && (
-                          <div className="absolute bottom-4 left-4 right-4 bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] p-3 rounded-xl text-[10px] flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-lg border border-[var(--md-sys-color-primary)]/10 z-10 animate-fade-in">
-                            <div className="flex items-start gap-2">
-                              <span className="material-symbols-outlined text-[var(--md-sys-color-primary)] text-sm mt-0.5">info</span>
-                              <span className="leading-normal text-left">
-                                <strong>Aviso do Ngrok:</strong> Se uma tela de segurança cinza for exibida, clique em <strong>Abrir</strong> para acessar em nova aba e selecione <strong>"Visit Site"</strong>. Isso salvará o cookie de liberação e habilitará o acesso direto aqui dentro do painel.
-                              </span>
+                          <div className="absolute bottom-4 left-4 right-4 bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] p-2.5 rounded-xl text-[10px] flex items-center justify-between gap-3 shadow z-10">
+                            <div className="flex items-center gap-2">
+                              <span className="material-symbols-outlined text-[var(--md-sys-color-primary)] text-sm">info</span>
+                              <span>Túnel Ngrok ativo. Se necessário, abra em nova aba para autorizar o acesso.</span>
                             </div>
-                            <a href={iframeUrl} target="_blank" rel="noopener noreferrer" className="bg-[var(--md-sys-color-primary)] text-white px-3 py-1.5 rounded-lg flex items-center justify-center gap-1 hover:opacity-90 transition-opacity whitespace-nowrap self-end sm:self-auto">
+                            <a href={iframeUrl} target="_blank" rel="noopener noreferrer" className="bg-[var(--md-sys-color-primary)] text-white px-3 py-1.5 rounded-lg flex items-center justify-center gap-1 hover:opacity-90 transition-opacity whitespace-nowrap">
                               <span className="material-symbols-outlined text-xs">open_in_new</span>
                               <span>Abrir</span>
                             </a>
