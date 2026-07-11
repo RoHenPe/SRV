@@ -617,9 +617,14 @@ export default function DashboardPage() {
                       <>
                         <iframe src={iframeUrl} className="w-full h-full border-0" allow="clipboard-read; clipboard-write; fullscreen" />
                         {typeof window !== 'undefined' && iframeUrl.includes('ngrok') && (
-                          <div className="absolute bottom-4 left-4 right-4 bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] p-2.5 rounded-xl text-[10px] flex items-center justify-between gap-3 shadow z-10">
-                            <span>Para liberar o aviso do Ngrok:</span>
-                            <a href={iframeUrl} target="_blank" rel="noopener noreferrer" className="bg-[var(--md-sys-color-primary)] text-white px-2.5 py-1 rounded-lg flex items-center gap-1 hover:opacity-90 transition-opacity whitespace-nowrap">
+                          <div className="absolute bottom-4 left-4 right-4 bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] p-3 rounded-xl text-[10px] flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-lg border border-[var(--md-sys-color-primary)]/10 z-10 animate-fade-in">
+                            <div className="flex items-start gap-2">
+                              <span className="material-symbols-outlined text-[var(--md-sys-color-primary)] text-sm mt-0.5">info</span>
+                              <span className="leading-normal text-left">
+                                <strong>Aviso do Ngrok:</strong> Se uma tela de segurança cinza for exibida, clique em <strong>Abrir</strong> para acessar em nova aba e selecione <strong>"Visit Site"</strong>. Isso salvará o cookie de liberação e habilitará o acesso direto aqui dentro do painel.
+                              </span>
+                            </div>
+                            <a href={iframeUrl} target="_blank" rel="noopener noreferrer" className="bg-[var(--md-sys-color-primary)] text-white px-3 py-1.5 rounded-lg flex items-center justify-center gap-1 hover:opacity-90 transition-opacity whitespace-nowrap self-end sm:self-auto">
                               <span className="material-symbols-outlined text-xs">open_in_new</span>
                               <span>Abrir</span>
                             </a>
