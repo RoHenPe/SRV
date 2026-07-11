@@ -107,7 +107,7 @@ export default function DashboardPage() {
   // Sandbox Applications definitions
   const apps = [
     { id: 'vscode',      name: 'VS Code',            icon: 'code',              type: 'sandbox', port: 8443 },
-    { id: 'webtop',      name: 'Webtop',              icon: 'desktop_windows',   type: 'sandbox', port: 3001, protocol: 'https:' },
+    { id: 'webtop',      name: 'Webtop',              icon: 'desktop_windows',   type: 'sandbox', port: 3000 },
     { id: 'steam',       name: 'Steam',               icon: 'sports_esports',    type: 'sandbox', port: 8083 },
     { id: 'filebrowser', name: 'Arquivos',             icon: 'folder_open',       type: 'sandbox', port: 8089 },
     { id: 'kdenlive',    name: 'Kdenlive',             icon: 'movie',             type: 'sandbox', port: 3005 },
@@ -590,18 +590,32 @@ export default function DashboardPage() {
                           <span>Abrir</span>
                         </a>
                       </div>
+                    ) : typeof window !== 'undefined' && window.location.protocol === 'https:' && iframeUrl.startsWith('http://') ? (
+                      <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center space-y-4 max-w-sm mx-auto">
+                        <div className="w-12 h-12 rounded-full bg-[var(--md-sys-color-error-container)] flex items-center justify-center text-[var(--md-sys-color-error)]">
+                          <span className="material-symbols-outlined text-2xl">security_update_warning</span>
+                        </div>
+                        <div className="space-y-1">
+                          <h3 className="text-sm font-semibold text-[var(--md-sys-color-on-surface)]">
+                            Conexão Externa Limitada
+                          </h3>
+                          <p className="text-[11px] text-[var(--md-sys-color-on-surface-variant)] leading-relaxed">
+                            Este serviço está sendo executado via túnel HTTP (Bore). Por segurança, o navegador não permite carregá-lo diretamente dentro do painel seguro (HTTPS).
+                          </p>
+                        </div>
+                        <a 
+                          href={iframeUrl} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="btn-primary py-2 px-5 rounded-xl font-medium flex items-center justify-center gap-1.5 text-xs shadow-sm hover:opacity-90 transition-opacity"
+                        >
+                          <span className="material-symbols-outlined text-sm">open_in_new</span>
+                          <span>Abrir em Nova Aba</span>
+                        </a>
+                      </div>
                     ) : (
                       <>
                         <iframe src={iframeUrl} className="w-full h-full border-0" allow="clipboard-read; clipboard-write; fullscreen" />
-                        {typeof window !== 'undefined' && window.location.protocol === 'https:' && iframeUrl.startsWith('http://') && (
-                          <div className="absolute bottom-4 left-4 right-4 bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)] p-2.5 rounded-xl text-[10px] flex items-center justify-between gap-3 shadow z-10">
-                            <span>Conteúdo misto detectado.</span>
-                            <a href={iframeUrl} target="_blank" rel="noopener noreferrer" className="bg-[var(--md-sys-color-error)] text-white px-2.5 py-1 rounded-lg flex items-center gap-1 hover:opacity-90 transition-opacity whitespace-nowrap">
-                              <span className="material-symbols-outlined text-xs">open_in_new</span>
-                              <span>Abrir</span>
-                            </a>
-                          </div>
-                        )}
                         {typeof window !== 'undefined' && iframeUrl.includes('ngrok') && (
                           <div className="absolute bottom-4 left-4 right-4 bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] p-2.5 rounded-xl text-[10px] flex items-center justify-between gap-3 shadow z-10">
                             <span>Para liberar o aviso do Ngrok:</span>
