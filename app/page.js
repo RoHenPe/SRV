@@ -211,7 +211,7 @@ export default function DashboardPage() {
 
   const handleLogout = () => {
     localStorage.removeItem('dashboard-token');
-    window.location.href = '/login';
+    router.push('/login');
   };
 
   const isRunning = useCallback((app) => {
@@ -1093,6 +1093,9 @@ function IaHubView({ addToast }) {
             parsed.push({ name: parts[0], id: parts[1], size: parts[2] });
           }
         }
+        if (data.gatewayModels && Array.isArray(data.gatewayModels)) {
+          parsed.push(...data.gatewayModels);
+        }
         setModels(parsed);
         if (parsed.length > 0 && !chatModel) {
           setChatModel(parsed[0].name);
@@ -1206,6 +1209,10 @@ function IaHubView({ addToast }) {
   };
 
   const removeModel = async (name) => {
+    if (name.includes('/')) {
+      addToast('Modelos de nuvem (Vercel AI Gateway) são integrados e não podem ser removidos.', 'info');
+      return;
+    }
     if (!window.confirm(`Deseja realmente remover o modelo ${name}?`)) return;
 
     try {
@@ -1375,9 +1382,15 @@ function IaHubView({ addToast }) {
                             <td className="py-2 px-3 font-mono font-medium">{m.name}</td>
                             <td className="py-2 px-3 font-mono text-[var(--md-sys-color-on-surface-variant)]">{m.size}</td>
                             <td className="py-2 px-3 text-right">
-                              <button onClick={() => removeModel(m.name)} title="Remover" className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-error)]">
-                                <span className="material-symbols-outlined text-[16px]">delete</span>
-                              </button>
+                              {m.name.includes('/') ? (
+                                <span className="inline-block px-2 py-0.5 text-[10px] rounded-full bg-[var(--md-sys-color-primary)]/10 text-[var(--md-sys-color-primary)] font-semibold">
+                                  Vercel AI
+                                </span>
+                              ) : (
+                                <button onClick={() => removeModel(m.name)} title="Remover" className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-error)]">
+                                  <span className="material-symbols-outlined text-[16px]">delete</span>
+                                </button>
+                              )}
                             </td>
                           </tr>
                         ))}

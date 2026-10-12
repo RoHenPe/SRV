@@ -1,22 +1,51 @@
 import { runSSH, apiHandler } from '@/lib/ssh';
+import { generateText } from 'ai';
 
 export async function POST(request) {
   return apiHandler(
     async () => {
       const body = await request.json();
-      const { model, messages } = body;
+      const { model, messages, provider } = body;
 
       if (!model || !messages) {
         throw new Error('Model and messages are required');
       }
 
+      const systemPrompt = 'Você é o assistente oficial do ROHENPER Dashboard, um painel de administração de servidor Linux doméstico rodando Ubuntu, Docker, túnel Bore e Tailscale. Auxilie o administrador a diagnosticar problemas, monitorar recursos (CPU/RAM/Disco), sugerir comandos e gerenciar serviços de forma profissional, direta e segura. Responda em formato markdown legível.';
+
+      // Se o modelo for da nuvem (Vercel AI Gateway)
+      if (provider === 'gateway' || model.includes('/') || model.startsWith('gateway:')) {
+        const gatewayModel = model.replace(/^gateway:/, '');
+        const coreMessages = messages.map((m) => ({
+          role: m.role === 'assistant' ? 'assistant' : m.role === 'system' ? 'system' : 'user',
+          content: m.content,
+        }));
+
+        try {
+          const result = await generateText({
+            model: gatewayModel,
+            system: systemPrompt,
+            messages: coreMessages,
+          });
+
+          return {
+            message: {
+              role: 'assistant',
+              content: result.text,
+            },
+          };
+        } catch (gatewayErr) {
+          throw new Error(`Vercel AI Gateway (${gatewayModel}): ${gatewayErr.message || gatewayErr}`);
+        }
+      }
+
       // Langchain concept: Inject a context-aware system prompt template to improve response quality
       const systemMessage = {
         role: 'system',
-        content: 'Você é o assistente oficial do ROHENPER Dashboard, um painel de administração de servidor Linux doméstico rodando Ubuntu, Docker, túnel Bore e Tailscale. Auxilie o administrador a diagnosticar problemas, monitorar recursos (CPU/RAM/Disco), sugerir comandos e gerenciar serviços de forma profissional, direta e segura. Responda em formato markdown legível.'
+        content: systemPrompt,
       };
 
-      const enrichedMessages = messages.some(m => m.role === 'system')
+      const enrichedMessages = messages.some((m) => m.role === 'system')
         ? messages
         : [systemMessage, ...messages];
 
@@ -49,3 +78,4 @@ export async function POST(request) {
     'POST /api/ia/chat'
   );
 }
+
