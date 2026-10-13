@@ -4,7 +4,8 @@ export async function GET(request) {
   try {
     await requireAuth(request);
     const users = await getUsers();
-    return Response.json({ ok: true, users });
+    const safeUsers = users.map(u => ({ username: u.username }));
+    return Response.json({ ok: true, users: safeUsers });
   } catch (err) {
     if (err instanceof AuthError) {
       return Response.json({ ok: false, error: err.message }, { status: err.status });

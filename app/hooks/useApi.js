@@ -2,7 +2,7 @@
 import { useState, useCallback } from 'react';
 
 /**
- * Hook para chamar API routes com loading/error handling
+ * Hook para chamar API routes com autenticação, loading e error handling
  */
 export function useApi() {
   const [loading, setLoading] = useState(false);
@@ -12,10 +12,26 @@ export function useApi() {
     setLoading(true);
     setError(null);
     try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('dashboard-token') : null;
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        ...(options.headers || {}),
+      };
+
       const res = await fetch(url, {
-        headers: { 'Content-Type': 'application/json' },
         ...options,
+        headers,
       });
+
+      if (res.status === 401) {
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('dashboard-token');
+          window.location.href = '/login';
+        }
+        throw new Error('Sessão expirada. Faça login novamente.');
+      }
+
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || 'Erro desconhecido');
       return data;

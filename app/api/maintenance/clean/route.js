@@ -4,10 +4,15 @@ import { runSSH, apiHandler } from '@/lib/ssh';
 export async function POST(request) {
   return apiHandler(
     async () => {
-      const result = await runSSH(
-        "find /home/rodrigo -maxdepth 2 \\( -name '*test*' -o -name '*tmp*' -o -name '*junk*' \\) -exec rm -rf {} + 2>&1; echo 'Limpeza concluída.'"
-      );
-      return { message: 'Limpeza executada.', output: result.stdout };
+      const cleanCmd = `
+        echo "=== Limpando Docker ===" && (sudo docker system prune -f 2>&1 || true) &&
+        echo "=== Limpando Cache APT ===" && (sudo apt-get clean 2>&1 || true) &&
+        echo "=== Limpando Logs /tmp ===" && (rm -f /tmp/bore_*.log /tmp/ngrok.tgz /tmp/*.tmp 2>/dev/null || true) &&
+        echo "=== Otimizando Journal ===" && (sudo journalctl --vacuum-size=50M 2>&1 || true) &&
+        echo "=== Limpeza concluída com sucesso! ==="
+      `;
+      const result = await runSSH(cleanCmd);
+      return { message: 'Limpeza executada com sucesso.', output: result.stdout };
     },
     request,
     'POST /api/maintenance/clean'

@@ -4,7 +4,7 @@ import { runSSH, apiHandler } from '@/lib/ssh';
 export async function GET(request) {
   return apiHandler(
     async () => {
-      const result = await runSSH("df -h | grep -E '/dev/sd|/mnt/'");
+      const result = await runSSH("df -h | grep -E '^/dev/|/mnt/|/media/'");
       return { output: result.stdout || 'Sem dados de storage disponíveis.' };
     },
     request,
