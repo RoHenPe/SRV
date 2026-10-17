@@ -27,9 +27,11 @@ function parseUptime(output) {
 
 async function apiFetch(url, options = {}) {
   const token = typeof window !== 'undefined' ? localStorage.getItem('dashboard-token') : null;
+  const sshOverride = typeof window !== 'undefined' ? localStorage.getItem('srv-ssh-override') : null;
   const headers = {
     'Content-Type': 'application/json',
     ...(token && { 'Authorization': `Bearer ${token}` }),
+    ...(sshOverride && { 'x-ssh-override': sshOverride }),
     ...options.headers,
   };
 
@@ -255,54 +257,41 @@ export default function DashboardPage() {
     const isLocal = isIPOrLocalhost(window.location.hostname);
     const resolveUrl = async () => {
       if (!isLocal) {
-        setLaunchMessage('Iniciando...');
+        setLaunchMessage('Criando túnel seguro...');
         try {
           const tunRes = await apiFetch('/api/tunnel', { method: 'POST', body: JSON.stringify({ port: app.port, protocol: app.protocol || 'http:' }) });
           if (tunRes.ok && tunRes.url) {
             const separator = (tunRes.url + path).includes('?') ? '&' : '?';
             return tunRes.url + path + separator + '_t=' + Date.now();
+          } else if (tunRes.error) {
+            throw new Error(tunRes.error);
           }
-        } catch (e) {}
+        } catch (e) {
+          throw e;
+        }
       }
       return targetUrl;
     };
 
     // If it's a sandbox, start/check it
     if (app.type === 'sandbox') {
-      // Map app id to container name
-      let containerName = `srv_${app.id}_sandbox`;
-      if (app.id === 'filebrowser') containerName = 'srv_filebrowser';
-      else if (app.id === 'antigravity') containerName = 'srv_ag_sandbox';
-      else if (app.id === 'neovim') containerName = 'srv_nvim_sandbox';
-
-      if (isContainerRunning(containerName)) {
-        setLaunching(true);
-        const finalUrl = await resolveUrl();
-        setIframeUrl(finalUrl);
-        setLaunching(false);
-        return;
-      }
-
       setLaunching(true);
-      setLaunchMessage('Iniciando...');
+      setLaunchMessage(`Iniciando ${app.name}...`);
       try {
         const res = await apiFetch(`/api/sandbox/${app.id}`, { method: 'POST' });
         if (res.ok) {
-          addToast(`${app.name} iniciado!`, 'success');
-          // Wait 5 seconds for initialization
-          setTimeout(async () => {
-            const finalUrl = await resolveUrl();
-            setIframeUrl(finalUrl);
-            setLaunching(false);
-            fetchStatus();
-          }, 5000);
+          setLaunchMessage('Conectando...');
+          const finalUrl = await resolveUrl();
+          setIframeUrl(finalUrl);
+          setLaunching(false);
+          fetchStatus();
         } else {
           addToast(res.error || 'Erro ao iniciar aplicativo.', 'error');
           setLaunching(false);
           setActiveTab('home');
         }
-      } catch {
-        addToast('Erro de conexão.', 'error');
+      } catch (err) {
+        addToast(err?.message || 'Erro de conexão.', 'error');
         setLaunching(false);
         setActiveTab('home');
       }
@@ -314,9 +303,16 @@ export default function DashboardPage() {
 
       if (running) {
         setLaunching(true);
-        const finalUrl = await resolveUrl();
-        setIframeUrl(finalUrl);
-        setLaunching(false);
+        setLaunchMessage('Conectando...');
+        try {
+          const finalUrl = await resolveUrl();
+          setIframeUrl(finalUrl);
+        } catch (err) {
+          addToast(err?.message || 'Erro ao conectar ao serviço.', 'error');
+          setActiveTab('home');
+        } finally {
+          setLaunching(false);
+        }
       } else {
         if (window.confirm(`O serviço ${app.name} não está ativo. Deseja iniciá-lo agora?`)) {
           setLaunching(true);
@@ -329,18 +325,24 @@ export default function DashboardPage() {
             if (res.ok) {
               addToast(`Serviço ${app.name} iniciado!`, 'success');
               setTimeout(async () => {
-                const finalUrl = await resolveUrl();
-                setIframeUrl(finalUrl);
-                setLaunching(false);
-                fetchStatus();
-              }, 6000);
+                try {
+                  const finalUrl = await resolveUrl();
+                  setIframeUrl(finalUrl);
+                } catch (err) {
+                  addToast(err?.message || 'Erro ao conectar ao serviço.', 'error');
+                  setActiveTab('home');
+                } finally {
+                  setLaunching(false);
+                  fetchStatus();
+                }
+              }, 5000);
             } else {
               addToast(res.error || 'Erro ao iniciar serviço.', 'error');
               setLaunching(false);
               setActiveTab('home');
             }
-          } catch {
-            addToast('Erro de conexão.', 'error');
+          } catch (err) {
+            addToast(err?.message || 'Erro de conexão.', 'error');
             setLaunching(false);
             setActiveTab('home');
           }
@@ -352,9 +354,16 @@ export default function DashboardPage() {
     // Static app
     else {
       setLaunching(true);
-      const finalUrl = await resolveUrl();
-      setIframeUrl(finalUrl);
-      setLaunching(false);
+      setLaunchMessage('Conectando...');
+      try {
+        const finalUrl = await resolveUrl();
+        setIframeUrl(finalUrl);
+      } catch (err) {
+        addToast(err?.message || 'Erro ao conectar ao aplicativo.', 'error');
+        setActiveTab('home');
+      } finally {
+        setLaunching(false);
+      }
     }
   };
 
@@ -528,7 +537,7 @@ export default function DashboardPage() {
           }`}>
 
 
-            {activeTab === 'home' && <HomeView apps={apps} selectApp={selectApp} serverStatus={serverStatus} addToast={addToast} fetchStatus={fetchStatus} isRunning={isRunning} />}
+            {activeTab === 'home' && <HomeView apps={apps} selectApp={selectApp} serverStatus={serverStatus} addToast={addToast} fetchStatus={fetchStatus} isRunning={isRunning} setActiveTab={setActiveTab} />}
             {activeTab === 'docker' && <DockerView addToast={addToast} />}
             {activeTab === 'vm' && <VmView serverStatus={serverStatus} addToast={addToast} />}
             {activeTab === 'ia' && <IaHubView addToast={addToast} />}
@@ -681,8 +690,26 @@ export default function DashboardPage() {
 }
 
 // ─── HOME VIEW ──────────────────────────────────────────────────────────────
-function HomeView({ apps, selectApp, serverStatus, addToast, fetchStatus, isRunning }) {
+function HomeView({ apps, selectApp, serverStatus, addToast, fetchStatus, isRunning, setActiveTab }) {
   const [loading, setLoading] = useState(false);
+  const [showSshConfig, setShowSshConfig] = useState(false);
+  const [sshOverrideInput, setSshOverrideInput] = useState(
+    typeof window !== 'undefined' ? localStorage.getItem('srv-ssh-override') || '' : ''
+  );
+
+  const saveSshOverride = (e) => {
+    e.preventDefault();
+    const val = sshOverrideInput.trim();
+    if (val) {
+      localStorage.setItem('srv-ssh-override', val);
+      addToast(`Rota SSH alterada para ${val}`, 'success');
+    } else {
+      localStorage.removeItem('srv-ssh-override');
+      addToast('Rota SSH restaurada para o padrão (.env)', 'info');
+    }
+    setShowSshConfig(false);
+    fetchStatus();
+  };
 
   const triggerPower = async (action) => {
     const label = action === 'reboot' ? 'reiniciar' : 'desligar';
@@ -712,38 +739,108 @@ function HomeView({ apps, selectApp, serverStatus, addToast, fetchStatus, isRunn
     setTimeout(fetchStatus, 3000);
   };
 
-  // isRunning helper passed as prop
+  const safeIsRunning = typeof isRunning === 'function' ? isRunning : () => false;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Top Welcome / Quick Info Bar */}
-      <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <span className="material-symbols-outlined text-lg text-[var(--md-sys-color-primary)]">dns</span>
-          <span className="text-xs font-medium text-[var(--md-sys-color-on-surface-variant)] truncate">
-            {serverStatus?.online ? `${serverStatus.host}` : 'Servidor Offline'}
-          </span>
-        </div>
-        <div className="flex gap-1.5">
-          {!serverStatus?.online && (
-            <button onClick={triggerWol} disabled={loading} title="Ligar (WOL)" className="w-9 h-9 rounded-xl bg-[var(--md-sys-color-primary)] text-white flex items-center justify-center transition-opacity hover:opacity-90">
-              <span className="material-symbols-outlined text-base">bolt</span>
+      <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className={`material-symbols-outlined text-lg ${serverStatus?.online ? 'text-green-500' : 'text-[var(--md-sys-color-error)]'}`}>
+              dns
+            </span>
+            <div className="flex flex-col min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-[var(--md-sys-color-on-surface)] truncate">
+                  {serverStatus?.online
+                    ? `${serverStatus.host}${serverStatus.port && serverStatus.port !== 22 ? `:${serverStatus.port}` : ''}`
+                    : 'Servidor Offline / Inalcançável'}
+                </span>
+                {serverStatus?.online && serverStatus?.route && (
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)]">
+                    {serverStatus.route}
+                  </span>
+                )}
+              </div>
+              {serverStatus?.online && (
+                <span className="text-[10px] text-[var(--md-sys-color-on-surface-variant)]">
+                  Uptime: {serverStatus.uptime || 'ativo'} • CPU: {serverStatus.cpu ?? 0}% • RAM: {serverStatus.memory?.used ?? 0}/{serverStatus.memory?.total ?? 0} GB ({serverStatus.memory?.percent ?? 0}%)
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setShowSshConfig((v) => !v)}
+              title="Configurar Rota / Porta do Túnel SSH (ex: bore.pub:PORTA)"
+              className="h-9 px-2.5 rounded-xl border border-[var(--md-sys-color-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)] flex items-center gap-1 text-[11px] font-medium"
+            >
+              <span className="material-symbols-outlined text-base">settings_ethernet</span>
+              <span className="hidden sm:inline">Rota SSH</span>
             </button>
-          )}
-          <button onClick={() => triggerPower('reboot')} disabled={loading || !serverStatus?.online} title="Reiniciar" className="w-9 h-9 rounded-xl border border-[var(--md-sys-color-warning)]/20 text-[var(--md-sys-color-warning)] bg-transparent hover:bg-[var(--md-sys-color-warning-container)]/10 flex items-center justify-center disabled:opacity-50">
-            <span className="material-symbols-outlined text-base">restart_alt</span>
-          </button>
-          <button onClick={() => triggerPower('shutdown')} disabled={loading || !serverStatus?.online} title="Desligar" className="w-9 h-9 rounded-xl bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)] hover:bg-[var(--md-sys-color-error-container)]/80 flex items-center justify-center disabled:opacity-50">
-            <span className="material-symbols-outlined text-base">power_off</span>
-          </button>
+            {setActiveTab && (
+              <button
+                onClick={() => setActiveTab('maintenance')}
+                title="Abrir Console SSH Direto & Gerenciador de Processos"
+                className="h-9 px-2.5 rounded-xl bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] flex items-center gap-1 text-[11px] font-semibold"
+              >
+                <span className="material-symbols-outlined text-base">terminal</span>
+                <span className="hidden sm:inline">Controle Direto</span>
+              </button>
+            )}
+            {!serverStatus?.online && (
+              <button onClick={triggerWol} disabled={loading} title="Ligar (WOL)" className="w-9 h-9 rounded-xl bg-[var(--md-sys-color-primary)] text-white flex items-center justify-center transition-opacity hover:opacity-90">
+                <span className="material-symbols-outlined text-base">bolt</span>
+              </button>
+            )}
+            <button onClick={() => triggerPower('reboot')} disabled={loading || !serverStatus?.online} title="Reiniciar" className="w-9 h-9 rounded-xl border border-[var(--md-sys-color-warning)]/20 text-[var(--md-sys-color-warning)] bg-transparent hover:bg-[var(--md-sys-color-warning-container)]/10 flex items-center justify-center disabled:opacity-50">
+              <span className="material-symbols-outlined text-base">restart_alt</span>
+            </button>
+            <button onClick={() => triggerPower('shutdown')} disabled={loading || !serverStatus?.online} title="Desligar" className="w-9 h-9 rounded-xl bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)] hover:bg-[var(--md-sys-color-error-container)]/80 flex items-center justify-center disabled:opacity-50">
+              <span className="material-symbols-outlined text-base">power_off</span>
+            </button>
+          </div>
         </div>
+
+        {showSshConfig && (
+          <form onSubmit={saveSshOverride} className="pt-2 border-t border-[var(--md-sys-color-surface-variant)] flex flex-col sm:flex-row gap-2 text-xs">
+            <input
+              type="text"
+              value={sshOverrideInput}
+              onChange={(e) => setSshOverrideInput(e.target.value)}
+              placeholder="Override de conexão (ex: bore.pub:54321, 100.119.122.10:22 ou 192.168.15.109:22) — vazio usa o padrão"
+              className="flex-1 bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3 py-2 outline-none font-mono text-[11px]"
+            />
+            <div className="flex gap-1.5">
+              <button type="submit" className="btn-primary px-3.5 py-2 rounded-xl font-semibold text-xs">
+                Aplicar Rota
+              </button>
+              {sshOverrideInput && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSshOverrideInput('');
+                    localStorage.removeItem('srv-ssh-override');
+                    setShowSshConfig(false);
+                    fetchStatus();
+                  }}
+                  className="px-3 py-2 rounded-xl border border-[var(--md-sys-color-surface-variant)] text-xs"
+                >
+                  Limpar
+                </button>
+              )}
+            </div>
+          </form>
+        )}
       </div>
 
       {/* Quick Launch App Grid */}
       <div className="space-y-2">
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
           {apps.map((app) => {
-            const running = isRunning(app);
+            const running = safeIsRunning(app);
             return (
               <button
                 key={app.id}
@@ -1077,7 +1174,8 @@ function IaHubView({ addToast }) {
 
   // Agent States
   const [agentPrompt, setAgentPrompt] = useState('');
-  const [agentMode, setAgentMode] = useState('safe'); // safe, autonomous
+  const [agentEngine, setAgentEngine] = useState('antigravity'); // antigravity, crewai, gemma4, interpreter
+  const [agentMode, setAgentMode] = useState('autonomous'); // safe, autonomous
   const [agentOutput, setAgentOutput] = useState('');
   const [agentLoading, setAgentLoading] = useState(false);
 
@@ -1177,7 +1275,7 @@ function IaHubView({ addToast }) {
     try {
       const data = await apiFetch('/api/ia/agent', {
         method: 'POST',
-        body: JSON.stringify({ prompt: agentPrompt, mode: agentMode })
+        body: JSON.stringify({ prompt: agentPrompt, mode: agentMode, engine: agentEngine })
       });
       if (data.ok) {
         setAgentOutput(data.output || 'Concluído.');
@@ -1339,28 +1437,38 @@ function IaHubView({ addToast }) {
                 type="text"
                 value={agentPrompt}
                 onChange={(e) => setAgentPrompt(e.target.value)}
-                placeholder="Comando para o agente..."
+                placeholder="Missão para o agente (ex: diagnostique o uso de RAM e containers ativos)..."
                 className="flex-1 bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3.5 py-2 text-xs outline-none border border-transparent focus:border-[var(--md-sys-color-primary)]"
                 disabled={agentLoading}
               />
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
+                <select
+                  value={agentEngine}
+                  onChange={(e) => setAgentEngine(e.target.value)}
+                  className="bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-2.5 py-2 outline-none text-[11px] font-medium"
+                >
+                  <option value="antigravity">Antigravity (Gemini 4 Argon)</option>
+                  <option value="gemma4">Gemma 4 (Ollama Servidor)</option>
+                  <option value="crewai">CrewAI (Software House)</option>
+                  <option value="interpreter">Open Interpreter</option>
+                </select>
                 <select 
                   value={agentMode} 
                   onChange={(e) => setAgentMode(e.target.value)}
                   className="bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-2 py-2 outline-none text-[11px] font-medium"
                 >
-                  <option value="safe">Confirmar</option>
-                  <option value="autonomous">Livre</option>
+                  <option value="autonomous">Autônomo</option>
+                  <option value="safe">Seguro</option>
                 </select>
-                <button type="submit" disabled={agentLoading || !agentPrompt.trim()} className="btn-primary px-4 rounded-xl font-bold flex items-center gap-1">
-                  <span className="material-symbols-outlined text-sm">play_arrow</span>
-                  <span>Executar</span>
+                <button type="submit" disabled={agentLoading || !agentPrompt.trim()} className="btn-primary px-4 py-2 rounded-xl font-bold flex items-center gap-1">
+                  <span className="material-symbols-outlined text-sm">{agentLoading ? 'autorenew' : 'play_arrow'}</span>
+                  <span>{agentLoading ? 'Rodando...' : 'Executar'}</span>
                 </button>
               </div>
             </form>
 
             <div className="flex-1 mt-4 flex flex-col bg-black text-green-400 font-mono text-[11px] p-3 rounded-xl overflow-hidden">
-              <pre className="flex-1 overflow-auto whitespace-pre-wrap">{agentOutput || 'Console do Agente...'}</pre>
+              <pre className="flex-1 overflow-auto whitespace-pre-wrap">{agentOutput || 'Console do Agente (Antigravity + Gemma 4 + CrewAI)...'}</pre>
             </div>
           </div>
         )}
@@ -1717,12 +1825,119 @@ function UsersView({ addToast }) {
   );
 }
 
-// ─── MAINTENANCE VIEW ───────────────────────────────────────────────────────
+// ─── MAINTENANCE & CONTROL CENTER VIEW ─────────────────────────────────────
 function MaintenanceView({ serverStatus, addToast, fetchStatus }) {
+  const [subTab, setSubTab] = useState('terminal'); // terminal, system, maintenance
   const [output, setOutput] = useState('');
   const [loading, setLoading] = useState(false);
   const [vpnLoading, setVpnLoading] = useState(false);
   const [vpnStatus, setVpnStatus] = useState('');
+
+  // Terminal Direto HTTPS states
+  const [cmdInput, setCmdInput] = useState('');
+  const [cwd, setCwd] = useState('~');
+  const [termHistory, setTermHistory] = useState([]);
+  const [termRunning, setTermRunning] = useState(false);
+  const termEndRef = useRef(null);
+
+  // System Control states (Processes + Systemd Services + Tunnels)
+  const [sysData, setSysData] = useState({ processes: [], services: [], listeningPorts: [], activeTunnels: [] });
+  const [sysLoading, setSysLoading] = useState(false);
+
+  const runDirectCommand = async (customCmd) => {
+    const commandToRun = (typeof customCmd === 'string' ? customCmd : cmdInput).trim();
+    if (!commandToRun || termRunning) return;
+    if (typeof customCmd !== 'string') setCmdInput('');
+
+    setTermRunning(true);
+    setTermHistory((prev) => [...prev, { type: 'cmd', cwd, text: commandToRun }]);
+    try {
+      const data = await apiFetch('/api/terminal/exec', {
+        method: 'POST',
+        body: JSON.stringify({ command: commandToRun, cwd }),
+      });
+      if (data.ok) {
+        if (data.cwd) setCwd(data.cwd);
+        setTermHistory((prev) => [
+          ...prev,
+          {
+            type: 'out',
+            text: data.output,
+            exitCode: data.exitCode,
+            route: data.route ? `${data.host}:${data.port} (${data.route})` : data.host,
+          },
+        ]);
+      } else {
+        setTermHistory((prev) => [...prev, { type: 'err', text: data.error || 'Erro ao executar comando.' }]);
+      }
+    } catch (err) {
+      setTermHistory((prev) => [...prev, { type: 'err', text: err?.message || 'Erro de conexão.' }]);
+    }
+    setTermRunning(false);
+  };
+
+  useEffect(() => {
+    termEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [termHistory, termRunning]);
+
+  const fetchSystemControl = useCallback(async () => {
+    setSysLoading(true);
+    try {
+      const data = await apiFetch('/api/system/control');
+      if (data.ok) {
+        setSysData({
+          processes: data.processes || [],
+          services: data.services || [],
+          listeningPorts: data.listeningPorts || [],
+          activeTunnels: data.activeTunnels || [],
+        });
+      } else {
+        addToast(data.error || 'Erro ao carregar processos e serviços.', 'error');
+      }
+    } catch {
+      addToast('Erro de conexão.', 'error');
+    }
+    setSysLoading(false);
+  }, [addToast]);
+
+  const handleKillProcess = async (pid, comm) => {
+    if (!window.confirm(`Encerrar processo ${comm} (PID ${pid})?`)) return;
+    try {
+      const data = await apiFetch('/api/system/control', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'kill_process', pid }),
+      });
+      if (data.ok) {
+        addToast(data.message || `PID ${pid} encerrado.`, 'success');
+        fetchSystemControl();
+      } else {
+        addToast(data.error || 'Falha ao encerrar processo.', 'error');
+      }
+    } catch {
+      addToast('Erro de rede.', 'error');
+    }
+  };
+
+  const handleServiceAction = async (service, op) => {
+    setSysLoading(true);
+    try {
+      const data = await apiFetch('/api/system/control', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'service', service, op }),
+      });
+      if (data.ok) {
+        addToast(`${service}: ${op} concluído!`, 'success');
+        fetchSystemControl();
+        fetchStatus();
+      } else {
+        addToast(data.error || 'Erro no serviço.', 'error');
+        setSysLoading(false);
+      }
+    } catch {
+      addToast('Erro de rede.', 'error');
+      setSysLoading(false);
+    }
+  };
 
   const runMaintenance = async (action, title) => {
     if (!window.confirm(`Executar: ${title}?`)) return;
@@ -1777,72 +1992,326 @@ function MaintenanceView({ serverStatus, addToast, fetchStatus }) {
   };
 
   useEffect(() => {
-    getVpnStatus();
-  }, [getVpnStatus]);
+    if (subTab === 'system') fetchSystemControl();
+    if (subTab === 'maintenance') getVpnStatus();
+  }, [subTab, fetchSystemControl, getVpnStatus]);
+
+  const quickCommands = [
+    { label: 'Status Geral', cmd: 'uptime && free -h && df -h /' },
+    { label: 'Containers', cmd: 'sudo docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"' },
+    { label: 'Túnel Bore (Porta 22)', cmd: 'journalctl -u bore-tunnel -n 15 --no-pager' },
+    { label: 'Portas Ativas', cmd: 'ss -tulpn | grep LISTEN' },
+    { label: 'Modelos Ollama', cmd: 'ollama list' },
+    { label: 'Tailscale', cmd: 'tailscale status' },
+    { label: 'Top CPU', cmd: 'ps -eo pid,user,%cpu,%mem,comm --sort=-%cpu | head -n 12' },
+    { label: 'Logs Sistema', cmd: 'journalctl -n 30 --no-pager' },
+  ];
 
   return (
     <div className="space-y-4 text-xs">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Left Column: Cards */}
-        <div className="space-y-4">
-          {/* VPN Tailscale Card */}
-          <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-xs flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[var(--md-sys-color-primary)]">vpn_lock</span>
-                VPN Tailscale
-              </span>
-              <button onClick={getVpnStatus} disabled={vpnLoading} className="w-7 h-7 rounded-lg hover:bg-black/5 flex items-center justify-center">
-                <span className="material-symbols-outlined text-base">refresh</span>
-              </button>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => toggleVpn('start')} disabled={vpnLoading} className="btn-primary py-2 px-3 rounded-xl font-bold flex-1 flex items-center justify-center gap-1">
-                <span className="material-symbols-outlined text-sm">vpn_lock</span>
-                <span>Ligar</span>
-              </button>
-              <button onClick={() => toggleVpn('stop')} disabled={vpnLoading} className="btn-danger py-2 px-3 rounded-xl font-bold flex-1 flex items-center justify-center gap-1">
-                <span className="material-symbols-outlined text-sm">link_off</span>
-                <span>Desligar</span>
-              </button>
-            </div>
-
-            <pre className="p-3 bg-black text-green-400 font-mono text-[10px] rounded-xl max-h-[100px] overflow-auto whitespace-pre-wrap">
-              {vpnLoading ? 'Carregando status...' : vpnStatus}
-            </pre>
-          </div>
-
-          {/* Maintenance Card */}
-          <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-3">
-            <span className="font-semibold text-xs flex items-center gap-1.5">
-              <span className="material-symbols-outlined text-[var(--md-sys-color-primary)]">build</span>
-              Manutenção
-            </span>
-            <div className="flex gap-2">
-              <button onClick={() => runMaintenance('clean', 'Limpar Lixo')} disabled={loading} className="btn-ghost py-2 px-3 rounded-xl font-bold flex-1 flex items-center justify-center gap-1 text-[var(--md-sys-color-error)] border-[var(--md-sys-color-error)]/20 hover:bg-[var(--md-sys-color-error-container)]">
-                <span className="material-symbols-outlined text-sm">delete_sweep</span>
-                <span>Limpar</span>
-              </button>
-              <button onClick={() => runMaintenance('update', 'Atualizar Servidor')} disabled={loading} className="btn-ghost py-2 px-3 rounded-xl font-bold flex-1 flex items-center justify-center gap-1">
-                <span className="material-symbols-outlined text-sm">system_update</span>
-                <span>Atualizar</span>
-              </button>
-            </div>
-          </div>
+      {/* Sub-navigation */}
+      <div className="flex flex-wrap items-center justify-between gap-2 bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] p-2 rounded-2xl">
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            onClick={() => setSubTab('terminal')}
+            className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${
+              subTab === 'terminal'
+                ? 'bg-[var(--md-sys-color-primary)] text-white'
+                : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px]">terminal</span>
+            <span>Console SSH Direto</span>
+          </button>
+          <button
+            onClick={() => setSubTab('system')}
+            className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${
+              subTab === 'system'
+                ? 'bg-[var(--md-sys-color-primary)] text-white'
+                : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px]">monitoring</span>
+            <span>Processos & Serviços</span>
+          </button>
+          <button
+            onClick={() => setSubTab('maintenance')}
+            className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${
+              subTab === 'maintenance'
+                ? 'bg-[var(--md-sys-color-primary)] text-white'
+                : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px]">build</span>
+            <span>VPN & Manutenção</span>
+          </button>
         </div>
 
-        {/* Live Output */}
-        <div className="flex flex-col bg-black text-green-400 p-3 rounded-2xl font-mono text-[11px] min-h-[200px] max-h-[300px] overflow-auto">
-          {loading ? (
-            <div className="flex items-center gap-2 animate-pulse">
-              <span className="animate-spin material-symbols-outlined text-sm">sync</span>
-              <span>Executando...</span>
-            </div>
-          ) : (
-            <pre className="whitespace-pre-wrap">{output || 'Saída do console...'}</pre>
-          )}
-        </div>
+        {subTab === 'system' && (
+          <button
+            onClick={fetchSystemControl}
+            disabled={sysLoading}
+            className="px-2.5 py-1.5 rounded-xl border border-[var(--md-sys-color-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)] flex items-center gap-1"
+          >
+            <span className={`material-symbols-outlined text-sm ${sysLoading ? 'animate-spin' : ''}`}>refresh</span>
+            <span>Atualizar</span>
+          </button>
+        )}
       </div>
+
+      {/* 1. CONSOLE SSH DIRETO VIA HTTPS (Funciona em qualquer rede / 4G / Vercel sem abrir portas extras) */}
+      {subTab === 'terminal' && (
+        <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-3">
+          <div className="flex flex-wrap gap-1.5">
+            {quickCommands.map((q, idx) => (
+              <button
+                key={idx}
+                onClick={() => runDirectCommand(q.cmd)}
+                disabled={termRunning}
+                className="px-2.5 py-1 rounded-lg bg-[var(--md-sys-color-surface-variant)] hover:bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-surface-variant)] hover:text-[var(--md-sys-color-on-primary-container)] font-medium text-[11px] transition-colors"
+              >
+                {q.label}
+              </button>
+            ))}
+            <button
+              onClick={() => setTermHistory([])}
+              className="ml-auto px-2.5 py-1 rounded-lg border border-[var(--md-sys-color-surface-variant)] text-[11px] opacity-75 hover:opacity-100"
+            >
+              Limpar
+            </button>
+          </div>
+
+          <div className="bg-black text-green-400 font-mono text-[11px] p-3.5 rounded-xl h-[360px] overflow-y-auto space-y-2 border border-gray-800">
+            {termHistory.length === 0 ? (
+              <div className="text-gray-500">
+                Console SSH Direto via HTTPS — opere o servidor de qualquer lugar (sem depender de iframes ou portas extras).
+              </div>
+            ) : (
+              termHistory.map((item, i) => (
+                <div key={i}>
+                  {item.type === 'cmd' && (
+                    <div className="text-cyan-400 font-bold">
+                      rodrigo@srv:{item.cwd}$ <span className="text-white font-normal">{item.text}</span>
+                    </div>
+                  )}
+                  {item.type === 'out' && (
+                    <pre className="whitespace-pre-wrap text-green-300 pl-1">
+                      {item.text}
+                      {item.exitCode !== 0 ? `\n[Exit Code: ${item.exitCode}]` : ''}
+                    </pre>
+                  )}
+                  {item.type === 'err' && (
+                    <pre className="whitespace-pre-wrap text-red-400 pl-1">{item.text}</pre>
+                  )}
+                </div>
+              ))
+            )}
+            {termRunning && (
+              <div className="text-yellow-400 animate-pulse">Executando comando no servidor...</div>
+            )}
+            <div ref={termEndRef} />
+          </div>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              runDirectCommand();
+            }}
+            className="flex gap-2"
+          >
+            <span className="px-2.5 py-2 rounded-xl bg-black text-cyan-400 font-mono text-[11px] flex items-center">
+              {cwd}$
+            </span>
+            <input
+              type="text"
+              value={cmdInput}
+              onChange={(e) => setCmdInput(e.target.value)}
+              placeholder="Digite qualquer comando Linux (ex: sudo systemctl status docker, htop, ls -la)..."
+              disabled={termRunning}
+              className="flex-1 bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3.5 py-2 font-mono text-xs outline-none border border-transparent focus:border-[var(--md-sys-color-primary)]"
+            />
+            <button
+              type="submit"
+              disabled={termRunning || !cmdInput.trim()}
+              className="btn-primary px-4 py-2 rounded-xl font-bold flex items-center gap-1"
+            >
+              <span className="material-symbols-outlined text-sm">send</span>
+              <span>Executar</span>
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* 2. GERENCIADOR DE PROCESSOS, SERVIÇOS SYSTEMD & TÚNEIS ATIVOS */}
+      {subTab === 'system' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Serviços Systemd & Túneis */}
+          <div className="space-y-4">
+            <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-3">
+              <span className="font-semibold text-xs flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[var(--md-sys-color-primary)]">settings_applications</span>
+                Serviços Críticos do Servidor (systemd)
+              </span>
+              <div className="divide-y divide-[var(--md-sys-color-surface-variant)]">
+                {sysData.services.map((srv, idx) => (
+                  <div key={idx} className="py-2 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${srv.active ? 'bg-green-500' : 'bg-red-500'}`} />
+                      <span className="font-mono font-semibold">{srv.name}</span>
+                      <span className="text-[10px] text-[var(--md-sys-color-on-surface-variant)]">({srv.state})</span>
+                    </div>
+                    <div className="flex gap-1">
+                      {!srv.active ? (
+                        <button
+                          onClick={() => handleServiceAction(srv.name, 'start')}
+                          className="px-2 py-1 rounded-lg bg-green-600 text-white text-[10px] font-bold"
+                        >
+                          Iniciar
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleServiceAction(srv.name, 'stop')}
+                          className="px-2 py-1 rounded-lg bg-red-600/80 text-white text-[10px] font-bold"
+                        >
+                          Parar
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleServiceAction(srv.name, 'restart')}
+                        className="px-2 py-1 rounded-lg bg-[var(--md-sys-color-surface-variant)] text-[10px] font-semibold"
+                      >
+                        Reiniciar
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-2">
+              <span className="font-semibold text-xs flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[var(--md-sys-color-primary)]">public</span>
+                Túneis Remotos & Portas em Escuta
+              </span>
+              {sysData.activeTunnels.length > 0 && (
+                <div className="p-2.5 rounded-xl bg-black text-green-400 font-mono text-[11px] space-y-1">
+                  {sysData.activeTunnels.map((t, i) => (
+                    <div key={i}>🔗 {t}</div>
+                  ))}
+                </div>
+              )}
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {sysData.listeningPorts.map((p, i) => (
+                  <span key={i} className="px-2 py-0.5 rounded-lg bg-[var(--md-sys-color-surface-variant)] font-mono text-[10px]">
+                    {p}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Top Processos CPU / RAM */}
+          <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] rounded-2xl overflow-hidden flex flex-col">
+            <div className="p-3.5 border-b border-[var(--md-sys-color-surface-variant)] font-semibold flex items-center justify-between">
+              <span>Top Processos (CPU / RAM)</span>
+              <span className="text-[10px] text-[var(--md-sys-color-on-surface-variant)]">Clique no X para encerrar</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-[var(--md-sys-color-surface-variant)]/50 text-[var(--md-sys-color-on-surface-variant)]">
+                    <th className="text-left py-2 px-3">PID</th>
+                    <th className="text-left py-2 px-3">Processo</th>
+                    <th className="text-right py-2 px-3">CPU%</th>
+                    <th className="text-right py-2 px-3">MEM%</th>
+                    <th className="text-right py-2 px-3">Ação</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--md-sys-color-surface-variant)]">
+                  {sysData.processes.map((proc, idx) => (
+                    <tr key={idx} className="hover:bg-[var(--md-sys-color-surface-variant)]/30">
+                      <td className="py-1.5 px-3 font-mono text-[10px]">{proc.pid}</td>
+                      <td className="py-1.5 px-3 font-mono font-medium truncate max-w-[140px]">{proc.command}</td>
+                      <td className="py-1.5 px-3 text-right font-mono">{proc.cpu}%</td>
+                      <td className="py-1.5 px-3 text-right font-mono">{proc.mem}%</td>
+                      <td className="py-1.5 px-3 text-right">
+                        <button
+                          onClick={() => handleKillProcess(proc.pid, proc.command)}
+                          title={`Encerrar PID ${proc.pid}`}
+                          className="w-6 h-6 rounded-lg hover:bg-red-500/20 text-[var(--md-sys-color-error)] inline-flex items-center justify-center"
+                        >
+                          <span className="material-symbols-outlined text-[15px]">close</span>
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. VPN TAILSCALE & MANUTENÇÃO */}
+      {subTab === 'maintenance' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="space-y-4">
+            <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-xs flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[var(--md-sys-color-primary)]">vpn_lock</span>
+                  VPN Tailscale
+                </span>
+                <button onClick={getVpnStatus} disabled={vpnLoading} className="w-7 h-7 rounded-lg hover:bg-black/5 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-base">refresh</span>
+                </button>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => toggleVpn('start')} disabled={vpnLoading} className="btn-primary py-2 px-3 rounded-xl font-bold flex-1 flex items-center justify-center gap-1">
+                  <span className="material-symbols-outlined text-sm">vpn_lock</span>
+                  <span>Ligar</span>
+                </button>
+                <button onClick={() => toggleVpn('stop')} disabled={vpnLoading} className="btn-danger py-2 px-3 rounded-xl font-bold flex-1 flex items-center justify-center gap-1">
+                  <span className="material-symbols-outlined text-sm">link_off</span>
+                  <span>Desligar</span>
+                </button>
+              </div>
+
+              <pre className="p-3 bg-black text-green-400 font-mono text-[10px] rounded-xl max-h-[120px] overflow-auto whitespace-pre-wrap">
+                {vpnLoading ? 'Carregando status...' : vpnStatus}
+              </pre>
+            </div>
+
+            <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-3">
+              <span className="font-semibold text-xs flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[var(--md-sys-color-primary)]">build</span>
+                Manutenção
+              </span>
+              <div className="flex gap-2">
+                <button onClick={() => runMaintenance('clean', 'Limpar Lixo')} disabled={loading} className="btn-ghost py-2 px-3 rounded-xl font-bold flex-1 flex items-center justify-center gap-1 text-[var(--md-sys-color-error)] border-[var(--md-sys-color-error)]/20 hover:bg-[var(--md-sys-color-error-container)]">
+                  <span className="material-symbols-outlined text-sm">delete_sweep</span>
+                  <span>Limpar</span>
+                </button>
+                <button onClick={() => runMaintenance('update', 'Atualizar Servidor')} disabled={loading} className="btn-ghost py-2 px-3 rounded-xl font-bold flex-1 flex items-center justify-center gap-1">
+                  <span className="material-symbols-outlined text-sm">system_update</span>
+                  <span>Atualizar</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col bg-black text-green-400 p-3 rounded-2xl font-mono text-[11px] min-h-[200px] max-h-[300px] overflow-auto">
+            {loading ? (
+              <div className="flex items-center gap-2 animate-pulse">
+                <span className="animate-spin material-symbols-outlined text-sm">sync</span>
+                <span>Executando...</span>
+              </div>
+            ) : (
+              <pre className="whitespace-pre-wrap">{output || 'Saída do console...'}</pre>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

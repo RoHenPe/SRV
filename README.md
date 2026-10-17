@@ -6,15 +6,17 @@ Dashboard web para gerenciar o servidor remoto, hospedado na **Vercel**.
 
 | Módulo | Funções |
 |--------|---------|
-| ⚡ Energia | Desligar, Reiniciar |
-| 🐳 Docker | Listar, Parar containers, Reiniciar serviço |
-| 🧪 Sandbox | VS Code, Webtop, Steam |
-| 🤖 IA Hub | Status Ollama, Listar modelos, Pull modelo |
-| 💾 Backup | Backup Full, Status de Storage |
-| 🔧 Manutenção | Limpar lixo, Update OS |
-| 🔒 VPN | Status Tailscale |
+| ⚡ Energia & Rota SSH | Ligar (WOL), Reiniciar, Desligar e Override dinâmico de `host:porta` (LAN / Tailscale / Túnel Bore) |
+| 💻 Console SSH Direto | Terminal interativo via API HTTPS (`/api/terminal/exec`) que funciona em 4G/Vercel sem abrir portas extras |
+| 📊 Processos & Systemd | Top Processos (CPU/RAM) com Kill PID, controle de serviços (`docker`, `ollama`, `tailscaled`, `bore-tunnel`) e túneis ativos |
+| 🌐 Túneis HTTPS Automáticos | Cloudflare Quick Tunnels (`https://*.trycloudflare.com`), Ngrok e Bore para abrir apps em iframes na Vercel sem erro de Mixed Content |
+| 🐳 Docker | Listar, Iniciar, Parar, Reiniciar containers/serviços e inspecionar Logs |
+| 🧪 Sandbox | VS Code, Webtop, Antigravity, Terminal, Arquivos, Neovim, Kdenlive, Steam |
+| 🤖 IA Hub Multi-Agente | Chat (Ollama / Vercel AI Gateway) + Agentes (**Antigravity Gemini 4 Argon**, **Gemma 4**, **CrewAI Software House** e **Open Interpreter**) |
+| 💾 Backup | Backup Geral, Google Fotos e Status de Discos |
+| 🔧 Manutenção & VPN | Limpar lixo, Atualizar SO e controle da VPN Tailscale |
 
-> **Nota:** A função **LIGAR (Wake-on-LAN)** não está disponível via web — requer acesso de broadcast UDP na rede local.
+> **Nota:** A função **LIGAR (Wake-on-LAN)** requer acesso de broadcast UDP na rede local.
 
 ## Setup
 

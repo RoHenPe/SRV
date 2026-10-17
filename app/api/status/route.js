@@ -95,6 +95,8 @@ export async function GET(request) {
       return {
         online: result.code === 0,
         host: result.host,
+        port: result.port,
+        route: result.route,
         runningContainers,
         ...parsed
       };
