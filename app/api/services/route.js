@@ -9,7 +9,7 @@ const SERVICE_MAP = {
   srv_jupyter_spark: { container: 'srv_jupyter_spark', composeDir: '~/data-portal' },
   srv_postgres_db: { container: 'srv_postgres_db', composeDir: '~/data-portal' },
   portal: { container: null, composeDir: '~/data-portal' },
-  emulator: { container: 'emulatorjs', composeDir: '~/Automation/Apps/Emulator' },
+  emulator: { container: 'emulator-android-container-1', composeDir: '~/Automation/Apps/Emulator' },
   ttyd: { container: 'srv_dashboard', composeDir: '~/srv-dashboard' },
   dashboard: { container: 'rohenper_dashboard', composeDir: '~/rohenper-dashboard' },
   jarvis: { container: 'open-webui', composeDir: null },
@@ -51,13 +51,19 @@ export async function POST(request) {
               : `cd ${spec.composeDir} && sudo docker compose restart`;
         }
       } else if (/^[a-zA-Z0-9_.-]+$/.test(service)) {
-        // Suporte genérico seguro para qualquer container Docker pelo nome técnico
         cmd = `sudo docker ${action} ${service}`;
       } else {
         throw new Error('Serviço inválido.');
       }
 
       const result = await runSSH(cmd);
+
+      if (service === 'srv_onlyoffice' && action === 'start') {
+        await runSSH(
+          'sudo docker exec srv_onlyoffice sh -c \'grep -q documentserver /etc/hosts || echo "127.0.0.1 documentserver" >> /etc/hosts; grep -q "8086" /etc/onlyoffice/documentserver/nginx/ds.conf || (sed -i "s/listen 0.0.0.0:80;/listen 0.0.0.0:80;\\n  listen 0.0.0.0:8086;/" /etc/onlyoffice/documentserver/nginx/ds.conf && nginx -s reload)\' 2>/dev/null || true'
+        );
+      }
+
       await logAction(`service.${action}`, result.code === 0 ? 'success' : 'error', {
         service,
         action,
