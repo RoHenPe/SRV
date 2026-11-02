@@ -136,6 +136,9 @@ export async function POST(request) {
         if (!['start', 'stop', 'restart'].includes(op)) {
           throw new Error(`Operação inválida: ${op}`);
         }
+        if ((service === 'bore-tunnel' || service === 'ssh') && op === 'stop') {
+          throw new Error(`Não é permitido parar o serviço crítico ${service} remotamente.`);
+        }
         const res = await runSSH(`sudo systemctl ${op} ${service} 2>&1 && systemctl is-active ${service} 2>&1`);
         await logAction('system.service', 'success', {
           service,
