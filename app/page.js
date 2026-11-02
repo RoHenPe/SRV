@@ -113,71 +113,10 @@ export default function DashboardPage() {
   const [iframeUrl, setIframeUrl] = useState('');
   const [launching, setLaunching] = useState(false);
   const [launchMessage, setLaunchMessage] = useState('');
-  const [deviceEnv, setDeviceEnv] = useState('Ambiente_PC');
 
+  // Invisible Xbox Bluetooth Gamepad bridge (forwards controller input on TV/PC/Mobile to Steam & Roblox)
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const savedEnv = localStorage.getItem('srv-device-env');
-    if (savedEnv) {
-      setDeviceEnv(savedEnv);
-      return;
-    }
-    const ua = navigator.userAgent || '';
-    let detected = 'Ambiente_PC';
-    if (/SmartTV|Tizen|Web0S|NetCast|BRAVIA|AFT|Android TV|GoogleTV|Viera|Xbox|PlayStation|TV/i.test(ua)) {
-      detected = 'Ambiente_TV';
-    } else if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua) || window.innerWidth < 768) {
-      detected = 'Ambiente_Celular';
-    }
-    setDeviceEnv(detected);
-    localStorage.setItem('srv-device-env', detected);
-  }, []);
-
-  const changeDeviceEnv = useCallback((nextEnv) => {
-    setDeviceEnv(nextEnv);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('srv-device-env', nextEnv);
-    }
-  }, []);
-
-  const buildAppPath = useCallback((app, env = deviceEnv) => {
-    if (!app) return '';
-    if (app.id === 'onlyoffice') {
-      return `/example/?srv_env=${encodeURIComponent(env)}`;
-    }
-    if (app.id === 'filebrowser') {
-      return '/files/SRV_Storage/';
-    }
-    if (app.id === 'vscode') {
-      const folderMap = {
-        Ambiente_PC: '/home/workspace/SRV_Storage/02_Ambiente_PC',
-        Ambiente_Celular: '/home/workspace/SRV_Storage/03_Ambiente_Celular',
-        Ambiente_TV: '/home/workspace/SRV_Storage/04_Ambiente_TV',
-        Cofre_Compartilhado: '/home/workspace/SRV_Storage/05_Compartilhado_Todos',
-      };
-      return `/?folder=${folderMap[env] || '/home/workspace/SRV_Storage'}`;
-    }
-    if (app.id === 'jupyter') {
-      const jupMap = {
-        Ambiente_PC: 'Ambiente_PC',
-        Ambiente_Celular: 'Ambiente_Celular',
-        Ambiente_TV: 'Ambiente_TV',
-        Cofre_Compartilhado: 'Compartilhado',
-      };
-      return `/lab/tree/${jupMap[env] || ''}?token=rodrigo123`;
-    }
-    if (app.id === 'steam') {
-      return `/web/?autoconnect=true&resize=scale&srv_env=${encodeURIComponent(env)}`;
-    }
-    if (app.id === 'emulator') {
-      return '/?autoconnect=true&resize=scale';
-    }
-    return app.path || '';
-  }, [deviceEnv]);
-
-  // Parent-window Xbox Bluetooth Gamepad bridge (ensures Smart TV browsers forward controller input even when focus is outside iframe)
-  useEffect(() => {
-    if (activeTab !== 'app' || activeApp?.id !== 'steam' || !iframeUrl) return;
+    if (activeTab !== 'app' || (activeApp?.id !== 'steam' && activeApp?.id !== 'roblox') || !iframeUrl) return;
     let baseOrigin = '';
     try {
       const u = new URL(iframeUrl);
@@ -222,8 +161,10 @@ export default function DashboardPage() {
   const apps = [
     { id: 'vscode',      name: 'VS Code',            icon: 'code',              type: 'sandbox', port: 8443 },
     { id: 'webtop',      name: 'Webtop',              icon: 'desktop_windows',   type: 'sandbox', port: 3000 },
-    { id: 'steam',       name: 'Steam',               icon: 'sports_esports',    type: 'sandbox', port: 8083 },
-    { id: 'filebrowser', name: 'Arquivos',             icon: 'folder_open',       type: 'sandbox', port: 8089 },
+    { id: 'steam',       name: 'Steam',               icon: 'sports_esports',    type: 'sandbox', port: 8083, path: '/web/?autoconnect=true&resize=scale' },
+    { id: 'roblox',      name: 'Roblox',              icon: 'videogame_asset',   type: 'sandbox', port: 8083, path: '/web/?autoconnect=true&resize=scale', containerName: 'srv_steam_sandbox' },
+    { id: 'erp',         name: 'ERP',                 icon: 'storefront',        type: 'service', serviceName: 'srv_erp_mercados', containerName: 'srv_erp_mercados',   port: 8090 },
+    { id: 'filebrowser', name: 'Arquivos',             icon: 'folder_open',       type: 'sandbox', port: 8089, path: '/files/SRV_Storage/' },
     { id: 'kdenlive',    name: 'Kdenlive',             icon: 'movie',             type: 'sandbox', port: 3005 },
     { id: 'neovim',      name: 'Neovim',               icon: 'edit_note',         type: 'sandbox', port: 7683 },
     { id: 'antigravity', name: 'Antigravity',          icon: 'vpn_key',           type: 'sandbox', port: 7685 },
@@ -235,8 +176,9 @@ export default function DashboardPage() {
     { id: 'metabase',    name: 'Metabase',             icon: 'analytics',         type: 'service', serviceName: 'srv_metabase',     containerName: 'srv_metabase',       port: 3003 },
     { id: 'jupyter',     name: 'Jupyter',              icon: 'science',           type: 'service', serviceName: 'srv_jupyter_spark',containerName: 'srv_jupyter_spark',  port: 8888, path: '/lab?token=rodrigo123' },
     { id: 'onlyoffice',  name: 'Documentos',           icon: 'description',       type: 'service', serviceName: 'srv_onlyoffice',   containerName: 'srv_onlyoffice',     port: 8086, path: '/example/' },
-    { id: 'emulator',    name: 'Android',              icon: 'phone_android',     type: 'service', serviceName: 'emulator',         containerName: 'android-container',  port: 6081 },
+    { id: 'emulator',    name: 'Android',              icon: 'phone_android',     type: 'service', serviceName: 'emulator',         containerName: 'android-container',  port: 6081, path: '/?autoconnect=true&resize=scale' },
     { id: 'jarvis',      name: 'Jarvis',               icon: 'smart_toy',         type: 'service', serviceName: 'jarvis',           containerName: 'open-webui',         port: 3010 },
+    { id: 'windows',     name: 'Windows',              icon: 'window',            type: 'service', serviceName: 'win10',            containerName: 'win10_teste',        port: 8006 },
   ];
 
   // Auth check
@@ -339,8 +281,7 @@ export default function DashboardPage() {
   }, [serverStatus]);
 
   // Sandbox/Service Launcher
-  const selectApp = async (app, overrideEnv = null) => {
-    const activeEnv = overrideEnv || deviceEnv;
+  const selectApp = async (app) => {
     setActiveTab('app');
     setActiveApp(app);
     setIframeUrl('');
@@ -348,7 +289,7 @@ export default function DashboardPage() {
     
     const serverHost = serverStatus?.host || '192.168.15.109';
     const protocol  = app.protocol || 'http:';
-    const path      = buildAppPath(app, activeEnv);
+    const path      = app.path || '';
     const targetUrl = `${protocol}//${serverHost}:${app.port}${path}`;
 
     const isContainerRunning = (name) => {
@@ -368,7 +309,7 @@ export default function DashboardPage() {
     // Fast path: if app is already running and pre-warmed tunnel URL is in serverStatus.activeTunnels, open immediately!
     const prewarmedTunnel = !isLocalHttp ? serverStatus?.activeTunnels?.[String(app.port)] : null;
     const appAlreadyUp = app.type === 'static' || isRunning(app);
-    if (appAlreadyUp && prewarmedTunnel) {
+    if (appAlreadyUp && prewarmedTunnel && app.id !== 'roblox' && app.id !== 'steam') {
       const base = prewarmedTunnel.replace(/\/$/, '');
       setIframeUrl(base + path);
       setLaunching(false);
@@ -559,7 +500,7 @@ export default function DashboardPage() {
   const isOnline = serverStatus?.online;
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-[var(--md-sys-color-background)] overflow-hidden text-[var(--md-sys-color-on-background)] relative">
+    <div className="flex flex-col h-screen bg-[var(--md-sys-color-background)] overflow-hidden text-[var(--md-sys-color-on-background)] relative">
       {/* Barra de Cabeçalho Superior para Celular */}
       <header className={`md:hidden h-[calc(3.5rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] border-b border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex items-center justify-between pl-[calc(1rem+env(safe-area-inset-left))] pr-[calc(1rem+env(safe-area-inset-right))] flex-shrink-0 z-20 ${
         activeTab === 'app' ? 'hidden' : 'flex'
@@ -662,7 +603,7 @@ export default function DashboardPage() {
           }`}>
 
 
-            {activeTab === 'home' && <HomeView apps={apps} selectApp={selectApp} serverStatus={serverStatus} addToast={addToast} fetchStatus={fetchStatus} isRunning={isRunning} setActiveTab={setActiveTab} deviceEnv={deviceEnv} changeDeviceEnv={changeDeviceEnv} />}
+            {activeTab === 'home' && <HomeView apps={apps} selectApp={selectApp} serverStatus={serverStatus} addToast={addToast} fetchStatus={fetchStatus} isRunning={isRunning} setActiveTab={setActiveTab} />}
             {activeTab === 'docker' && <DockerView addToast={addToast} />}
             {activeTab === 'vm' && <VmView serverStatus={serverStatus} addToast={addToast} />}
             {activeTab === 'ia' && <IaHubView addToast={addToast} />}
@@ -688,21 +629,6 @@ export default function DashboardPage() {
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
-                    <select
-                      value={deviceEnv}
-                      onChange={(e) => {
-                        const next = e.target.value;
-                        changeDeviceEnv(next);
-                        selectApp(activeApp, next);
-                      }}
-                      title="Ambiente do Dispositivo"
-                      className="h-7 px-2 rounded-lg bg-[var(--md-sys-color-surface)] text-[var(--md-sys-color-on-surface)] text-[11px] border border-[var(--md-sys-color-surface-variant)] outline-none"
-                    >
-                      <option value="Ambiente_PC">Ambiente PC</option>
-                      <option value="Ambiente_Celular">Ambiente Celular</option>
-                      <option value="Ambiente_TV">Ambiente TV</option>
-                      <option value="Cofre_Compartilhado">Cofre Compartilhado</option>
-                    </select>
                     {iframeUrl && (
                       <a 
                         href={iframeUrl} 
@@ -786,7 +712,7 @@ export default function DashboardPage() {
 }
 
 // ─── HOME VIEW ──────────────────────────────────────────────────────────────
-function HomeView({ apps, selectApp, serverStatus, addToast, fetchStatus, deviceEnv, changeDeviceEnv }) {
+function HomeView({ apps, selectApp, serverStatus, addToast, fetchStatus }) {
   const [loading, setLoading] = useState(false);
 
   const triggerPower = async (action) => {
@@ -832,17 +758,6 @@ function HomeView({ apps, selectApp, serverStatus, addToast, fetchStatus, device
           </div>
 
           <div className="flex items-center gap-1.5">
-            <select
-              value={deviceEnv}
-              onChange={(e) => changeDeviceEnv(e.target.value)}
-              title="Ambiente Isolado do Dispositivo"
-              className="h-9 px-2.5 rounded-xl border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-background)] text-[var(--md-sys-color-on-surface)] text-xs font-medium outline-none"
-            >
-              <option value="Ambiente_PC">Ambiente PC</option>
-              <option value="Ambiente_Celular">Ambiente Celular</option>
-              <option value="Ambiente_TV">Ambiente TV</option>
-              <option value="Cofre_Compartilhado">Cofre Compartilhado</option>
-            </select>
             {!serverStatus?.online && (
               <button onClick={triggerWol} disabled={loading} title="Ligar (WOL)" className="w-9 h-9 rounded-xl bg-[var(--md-sys-color-primary)] text-white flex items-center justify-center transition-opacity hover:opacity-90">
                 <span className="material-symbols-outlined text-base">bolt</span>

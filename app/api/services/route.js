@@ -14,7 +14,9 @@ const SERVICE_MAP = {
   dashboard: { container: 'rohenper_dashboard', composeDir: '~/rohenper-dashboard' },
   jarvis: { container: 'open-webui', composeDir: null },
   'open-webui': { container: 'open-webui', composeDir: null },
-  srv_erp_mercados: { container: 'srv_erp_mercados', composeDir: '~/erp-mercados' },
+  srv_erp_mercados: { container: 'srv_erp_mercados', composeDir: '~/erp-mercados/deploy' },
+  erp: { container: 'srv_erp_mercados', composeDir: '~/erp-mercados/deploy' },
+  win10: { container: 'win10_teste', composeDir: '~/win10-deploy' },
 };
 
 export async function POST(request) {
