@@ -113,6 +113,110 @@ export default function DashboardPage() {
   const [iframeUrl, setIframeUrl] = useState('');
   const [launching, setLaunching] = useState(false);
   const [launchMessage, setLaunchMessage] = useState('');
+  const [deviceEnv, setDeviceEnv] = useState('Ambiente_PC');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const savedEnv = localStorage.getItem('srv-device-env');
+    if (savedEnv) {
+      setDeviceEnv(savedEnv);
+      return;
+    }
+    const ua = navigator.userAgent || '';
+    let detected = 'Ambiente_PC';
+    if (/SmartTV|Tizen|Web0S|NetCast|BRAVIA|AFT|Android TV|GoogleTV|Viera|Xbox|PlayStation|TV/i.test(ua)) {
+      detected = 'Ambiente_TV';
+    } else if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua) || window.innerWidth < 768) {
+      detected = 'Ambiente_Celular';
+    }
+    setDeviceEnv(detected);
+    localStorage.setItem('srv-device-env', detected);
+  }, []);
+
+  const changeDeviceEnv = useCallback((nextEnv) => {
+    setDeviceEnv(nextEnv);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('srv-device-env', nextEnv);
+    }
+  }, []);
+
+  const buildAppPath = useCallback((app, env = deviceEnv) => {
+    if (!app) return '';
+    if (app.id === 'onlyoffice') {
+      return `/example/?srv_env=${encodeURIComponent(env)}`;
+    }
+    if (app.id === 'filebrowser') {
+      return '/files/SRV_Storage/';
+    }
+    if (app.id === 'vscode') {
+      const folderMap = {
+        Ambiente_PC: '/home/workspace/SRV_Storage/02_Ambiente_PC',
+        Ambiente_Celular: '/home/workspace/SRV_Storage/03_Ambiente_Celular',
+        Ambiente_TV: '/home/workspace/SRV_Storage/04_Ambiente_TV',
+        Cofre_Compartilhado: '/home/workspace/SRV_Storage/05_Compartilhado_Todos',
+      };
+      return `/?folder=${folderMap[env] || '/home/workspace/SRV_Storage'}`;
+    }
+    if (app.id === 'jupyter') {
+      const jupMap = {
+        Ambiente_PC: 'Ambiente_PC',
+        Ambiente_Celular: 'Ambiente_Celular',
+        Ambiente_TV: 'Ambiente_TV',
+        Cofre_Compartilhado: 'Compartilhado',
+      };
+      return `/lab/tree/${jupMap[env] || ''}?token=rodrigo123`;
+    }
+    if (app.id === 'steam') {
+      return `/web/?autoconnect=true&resize=scale&srv_env=${encodeURIComponent(env)}`;
+    }
+    if (app.id === 'emulator') {
+      return '/?autoconnect=true&resize=scale';
+    }
+    return app.path || '';
+  }, [deviceEnv]);
+
+  // Parent-window Xbox Bluetooth Gamepad bridge (ensures Smart TV browsers forward controller input even when focus is outside iframe)
+  useEffect(() => {
+    if (activeTab !== 'app' || activeApp?.id !== 'steam' || !iframeUrl) return;
+    let baseOrigin = '';
+    try {
+      const u = new URL(iframeUrl);
+      baseOrigin = u.origin;
+    } catch {
+      return;
+    }
+    let lastHash = '';
+    const timer = setInterval(() => {
+      if (!navigator.getGamepads) return;
+      const pads = navigator.getGamepads();
+      let pad = null;
+      for (let i = 0; i < pads.length; i++) {
+        if (pads[i] && pads[i].connected) {
+          pad = pads[i];
+          break;
+        }
+      }
+      if (!pad) return;
+      const buttons = pad.buttons.map((b) => (b && (b.pressed || b.value > 0.5) ? 1 : 0));
+      const b6 = pad.buttons[6] ? Math.round(pad.buttons[6].value * 100) / 100 : 0;
+      const b7 = pad.buttons[7] ? Math.round(pad.buttons[7].value * 100) / 100 : 0;
+      const axes = pad.axes.map((a) => (Math.abs(a) < 0.08 ? 0 : Math.round(a * 100) / 100));
+      const hash = `${buttons.join('')}:${b6}:${b7}:${axes.join(',')}`;
+      if (hash !== lastHash) {
+        lastHash = hash;
+        fetch(`${baseOrigin}/__gamepad/state`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            buttons: buttons.map((v, idx) => (idx === 6 ? b6 : idx === 7 ? b7 : v)),
+            axes,
+          }),
+          keepalive: true,
+        }).catch(() => {});
+      }
+    }, 35);
+    return () => clearInterval(timer);
+  }, [activeTab, activeApp, iframeUrl]);
 
   // Sandbox Applications definitions
   const apps = [
@@ -235,21 +339,18 @@ export default function DashboardPage() {
   }, [serverStatus]);
 
   // Sandbox/Service Launcher
-  const selectApp = async (app) => {
+  const selectApp = async (app, overrideEnv = null) => {
+    const activeEnv = overrideEnv || deviceEnv;
     setActiveTab('app');
     setActiveApp(app);
     setIframeUrl('');
     setMobileMenuOpen(false);
     
-    // ALWAYS use the server's own IP for container URLs.
-    // Containers run on the server — NOT on the browser's machine.
-    // serverStatus.host is the IP that SSH successfully connected to (LAN or VPN).
     const serverHost = serverStatus?.host || '192.168.15.109';
     const protocol  = app.protocol || 'http:';
-    const path      = app.path || '';
+    const path      = buildAppPath(app, activeEnv);
     const targetUrl = `${protocol}//${serverHost}:${app.port}${path}`;
 
-    // Helper: check if a specific container is running
     const isContainerRunning = (name) => {
       if (!serverStatus?.runningContainers) return false;
       return serverStatus.runningContainers.some(c =>
@@ -263,6 +364,20 @@ export default function DashboardPage() {
     };
     const isLocal = isIPOrLocalhost(window.location.hostname);
     const isLocalHttp = isLocal && window.location.protocol === 'http:';
+
+    // Fast path: if app is already running and pre-warmed tunnel URL is in serverStatus.activeTunnels, open immediately!
+    const prewarmedTunnel = !isLocalHttp ? serverStatus?.activeTunnels?.[String(app.port)] : null;
+    const appAlreadyUp = app.type === 'static' || isRunning(app);
+    if (appAlreadyUp && prewarmedTunnel) {
+      const base = prewarmedTunnel.replace(/\/$/, '');
+      setIframeUrl(base + path);
+      setLaunching(false);
+      if (app.type === 'sandbox') {
+        apiFetch(`/api/sandbox/${app.id}`, { method: 'POST' }).catch(() => {});
+      }
+      return;
+    }
+
     const resolveUrl = async () => {
       setLaunchMessage('Conectando...');
       try {
@@ -547,7 +662,7 @@ export default function DashboardPage() {
           }`}>
 
 
-            {activeTab === 'home' && <HomeView apps={apps} selectApp={selectApp} serverStatus={serverStatus} addToast={addToast} fetchStatus={fetchStatus} isRunning={isRunning} setActiveTab={setActiveTab} />}
+            {activeTab === 'home' && <HomeView apps={apps} selectApp={selectApp} serverStatus={serverStatus} addToast={addToast} fetchStatus={fetchStatus} isRunning={isRunning} setActiveTab={setActiveTab} deviceEnv={deviceEnv} changeDeviceEnv={changeDeviceEnv} />}
             {activeTab === 'docker' && <DockerView addToast={addToast} />}
             {activeTab === 'vm' && <VmView serverStatus={serverStatus} addToast={addToast} />}
             {activeTab === 'ia' && <IaHubView addToast={addToast} />}
@@ -573,6 +688,21 @@ export default function DashboardPage() {
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
+                    <select
+                      value={deviceEnv}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        changeDeviceEnv(next);
+                        selectApp(activeApp, next);
+                      }}
+                      title="Ambiente do Dispositivo"
+                      className="h-7 px-2 rounded-lg bg-[var(--md-sys-color-surface)] text-[var(--md-sys-color-on-surface)] text-[11px] border border-[var(--md-sys-color-surface-variant)] outline-none"
+                    >
+                      <option value="Ambiente_PC">Ambiente PC</option>
+                      <option value="Ambiente_Celular">Ambiente Celular</option>
+                      <option value="Ambiente_TV">Ambiente TV</option>
+                      <option value="Cofre_Compartilhado">Cofre Compartilhado</option>
+                    </select>
                     {iframeUrl && (
                       <a 
                         href={iframeUrl} 
@@ -603,7 +733,7 @@ export default function DashboardPage() {
                           : iframeUrl
                       }
                       className="w-full h-full border-0"
-                      allow="autoplay; clipboard-read; clipboard-write; fullscreen"
+                      allow="autoplay; clipboard-read; clipboard-write; fullscreen; gamepad"
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-xs text-[var(--md-sys-color-on-surface-variant)]">
@@ -656,7 +786,7 @@ export default function DashboardPage() {
 }
 
 // ─── HOME VIEW ──────────────────────────────────────────────────────────────
-function HomeView({ apps, selectApp, serverStatus, addToast, fetchStatus }) {
+function HomeView({ apps, selectApp, serverStatus, addToast, fetchStatus, deviceEnv, changeDeviceEnv }) {
   const [loading, setLoading] = useState(false);
 
   const triggerPower = async (action) => {
@@ -702,6 +832,17 @@ function HomeView({ apps, selectApp, serverStatus, addToast, fetchStatus }) {
           </div>
 
           <div className="flex items-center gap-1.5">
+            <select
+              value={deviceEnv}
+              onChange={(e) => changeDeviceEnv(e.target.value)}
+              title="Ambiente Isolado do Dispositivo"
+              className="h-9 px-2.5 rounded-xl border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-background)] text-[var(--md-sys-color-on-surface)] text-xs font-medium outline-none"
+            >
+              <option value="Ambiente_PC">Ambiente PC</option>
+              <option value="Ambiente_Celular">Ambiente Celular</option>
+              <option value="Ambiente_TV">Ambiente TV</option>
+              <option value="Cofre_Compartilhado">Cofre Compartilhado</option>
+            </select>
             {!serverStatus?.online && (
               <button onClick={triggerWol} disabled={loading} title="Ligar (WOL)" className="w-9 h-9 rounded-xl bg-[var(--md-sys-color-primary)] text-white flex items-center justify-center transition-opacity hover:opacity-90">
                 <span className="material-symbols-outlined text-base">bolt</span>

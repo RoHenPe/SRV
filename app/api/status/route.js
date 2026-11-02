@@ -1,4 +1,4 @@
-import { runSSH, apiHandler } from '@/lib/ssh';
+import { runSSH, apiHandler, getCachedTunnels } from '@/lib/ssh';
 import { getActiveSessions } from '@/lib/auth';
 
 let cachedStatusData = null;
@@ -97,6 +97,8 @@ async function fetchServerStatus() {
     port: result.port,
     route: result.route,
     runningContainers,
+    activeTunnels: getCachedTunnels(),
+    storagePath: '/home/rodrigo/SRV_Storage',
     ...parsed,
   };
 }
