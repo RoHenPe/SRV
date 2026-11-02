@@ -1,887 +1,1004 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import ConfirmModal from './components/ConfirmModal';
+import OutputPanel from './components/OutputPanel';
+import { getOrInitDeviceIdentity } from './hooks/useApi';
 
-// ─── UTILS ──────────────────────────────────────────────────────────────────
-function parseUptime(output) {
-  if (!output) return null;
-  const lines = output.split('\n');
-  if (lines.length < 2) return null;
-  const uptimeLine = lines[1];
-  
-  const upIndex = uptimeLine.indexOf('up');
-  if (upIndex === -1) return null;
-  
-  const fromUp = uptimeLine.substring(upIndex + 3);
-  const commaIndex = fromUp.indexOf(',');
-  const uptimeStr = commaIndex !== -1 ? fromUp.substring(0, commaIndex).trim() : fromUp.trim();
-  
-  const loadIndex = uptimeLine.indexOf('load average:');
-  const loadStr = loadIndex !== -1 ? uptimeLine.substring(loadIndex + 13).trim() : null;
-  
-  return {
-    uptime: uptimeStr,
-    load: loadStr,
-  };
-}
+const NAV_ITEMS = [
+  { id: 'home', label: 'Visão Geral', icon: 'grid_view' },
+  { id: 'containers', label: 'Containers', icon: 'deployed_code' },
+  { id: 'ia', label: 'Automação & LLM', icon: 'memory' },
+  { id: 'terminal', label: 'Terminal SSH', icon: 'terminal' },
+  { id: 'sistema', label: 'Processos & Rede', icon: 'monitoring' },
+  { id: 'backup', label: 'Storage & Backup', icon: 'hard_drive' },
+  { id: 'manutencao', label: 'Manutenção', icon: 'build' },
+  { id: 'logs', label: 'Logs do Servidor', icon: 'receipt_long' },
+  { id: 'usuarios', label: 'Sessões & Acessos', icon: 'devices' },
+];
 
-async function apiFetch(url, options = {}) {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('dashboard-token') : null;
-  const sshOverride = typeof window !== 'undefined' ? localStorage.getItem('srv-ssh-override') : null;
-  const headers = {
-    'Content-Type': 'application/json',
-    ...(token && { 'Authorization': `Bearer ${token}` }),
-    ...(sshOverride && { 'x-ssh-override': sshOverride }),
-    ...options.headers,
-  };
-
-  const res = await fetch(url, {
-    ...options,
-    headers,
-  });
-
-  if (res.status === 401) {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('dashboard-token');
-      window.location.href = '/login';
-    }
-  }
-
-  return res.json();
-}
-
-// ─── TOAST HOOK & COMPONENT ─────────────────────────────────────────────────
-function Toast({ toasts, removeToast }) {
-  return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-xs w-full">
-      {toasts.map((t) => (
-        <div
-          key={t.id}
-          className={`flex items-start gap-3 p-3 rounded-xl border border-[var(--md-sys-color-surface-variant)] animate-fade-in ${
-            t.type === 'error'
-              ? 'bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)]'
-              : t.type === 'success'
-              ? 'bg-[var(--md-sys-color-tertiary-container)] text-[var(--md-sys-color-on-tertiary-container)]'
-              : 'bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)]'
-          }`}
-        >
-          <span className="material-symbols-outlined icon-filled text-[18px] flex-shrink-0 mt-0.5">
-            {t.type === 'error' ? 'error' : t.type === 'success' ? 'check_circle' : 'info'}
-          </span>
-          <span className="flex-1 font-medium text-xs">{t.message}</span>
-          <button onClick={() => removeToast(t.id)} className="opacity-70 hover:opacity-100 transition-opacity">
-            <span className="material-symbols-outlined text-[18px]">close</span>
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function useToast() {
-  const [toasts, setToasts] = useState([]);
-  const addToast = useCallback((message, type = 'info') => {
-    const id = Date.now();
-    setToasts((p) => [...p, { id, message, type }]);
-    setTimeout(() => setToasts((p) => p.filter((t) => t.id !== id)), 5000);
-  }, []);
-  const removeToast = useCallback((id) => setToasts((p) => p.filter((t) => t.id !== id)), []);
-  return { toasts, addToast, removeToast };
-}
-
-// ─── MAIN DASHBOARD ─────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const router = useRouter();
-  const { toasts, addToast, removeToast } = useToast();
-  
-  const [serverStatus, setServerStatus] = useState(null);
-  const [theme, setTheme] = useState('light');
-  const [authValid, setAuthValid] = useState(typeof window !== 'undefined' ? !!localStorage.getItem('dashboard-token') : false);
-  const [activeTab, setActiveTab] = useState('home'); // home, docker, ia, backup, users, maintenance, or app config
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [activeView, setActiveView] = useState('home');
+  const [theme, setTheme] = useState('dark');
+  const [deviceIdentity, setDeviceIdentity] = useState({ deviceId: '', deviceName: '' });
+  const [currentUser, setCurrentUser] = useState('admin');
+  const [sshOverride, setSshOverride] = useState('');
 
-  // States for active iframe app
+  // Status compartilhado do servidor
+  const [serverStatus, setServerStatus] = useState({
+    online: false,
+    cpu: 0,
+    uptime: '',
+    memory: { total: 0, used: 0, percent: 0 },
+    disks: [],
+    runningContainers: [],
+    activeDevices: 1,
+    host: '',
+    port: 22,
+    route: '',
+  });
+  const [statusLoading, setStatusLoading] = useState(true);
+
+  // Aplicativo/módulo aberto em tela embarcada neste dispositivo
   const [activeApp, setActiveApp] = useState(null);
-  const [iframeUrl, setIframeUrl] = useState('');
-  const [launching, setLaunching] = useState(false);
-  const [launchMessage, setLaunchMessage] = useState('');
+  const [appLoading, setAppLoading] = useState(false);
+  const [appLoadingText, setAppLoadingText] = useState('');
 
-  // Sandbox Applications definitions
-  const apps = [
-    { id: 'vscode',      name: 'VS Code',            icon: 'code',              type: 'sandbox', port: 8443 },
-    { id: 'webtop',      name: 'Webtop',              icon: 'desktop_windows',   type: 'sandbox', port: 3000 },
-    { id: 'steam',       name: 'Steam',               icon: 'sports_esports',    type: 'sandbox', port: 8083 },
-    { id: 'filebrowser', name: 'Arquivos',             icon: 'folder_open',       type: 'sandbox', port: 8089 },
-    { id: 'kdenlive',    name: 'Kdenlive',             icon: 'movie',             type: 'sandbox', port: 3005 },
-    { id: 'neovim',      name: 'Neovim',               icon: 'edit_note',         type: 'sandbox', port: 7683 },
-    { id: 'antigravity', name: 'Antigravity',          icon: 'vpn_key',           type: 'sandbox', port: 7685 },
-    { id: 'terminal',    name: 'Terminal',             icon: 'terminal',          type: 'sandbox', port: 7682 },
-    { id: 'ttyd',        name: 'Monitor',              icon: 'monitoring',        type: 'service', serviceName: 'ttyd',             containerName: 'srv_dashboard',      port: 7681 },
-    { id: 'cockpit',     name: 'Cockpit',              icon: 'web',               type: 'static',  port: 9090, protocol: 'https:', skipIframe: true },
-    { id: 'cups',        name: 'Impressora',           icon: 'print',             type: 'service', serviceName: 'cups',             containerName: 'cupsd',              port: 631,  skipIframe: true },
-    { id: 'scanner',     name: 'Scanner',              icon: 'document_scanner',  type: 'service', serviceName: 'scanner',          containerName: 'scanservjs',         port: 8080 },
-    { id: 'metabase',    name: 'Metabase',             icon: 'analytics',         type: 'service', serviceName: 'srv_metabase',     containerName: 'srv_metabase',       port: 3003, skipIframe: true },
-    { id: 'jupyter',     name: 'Jupyter',              icon: 'science',           type: 'service', serviceName: 'srv_jupyter_spark',containerName: 'srv_jupyter_spark',  port: 8888, skipIframe: true },
-    { id: 'onlyoffice',  name: 'Documentos',           icon: 'description',       type: 'service', serviceName: 'srv_onlyoffice',   containerName: 'srv_onlyoffice',     port: 8086, path: '/example/', skipIframe: true },
-    { id: 'emulator',    name: 'Android',              icon: 'phone_android',     type: 'service', serviceName: 'emulator',         containerName: 'android-container',  port: 6081 },
-    { id: 'jarvis',      name: 'Jarvis',               icon: 'smart_toy',         type: 'service', serviceName: 'jarvis',           containerName: 'open-webui',         port: 3010 },
-  ];
+  // Modal de confirmação e painel de saída
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    danger: true,
+    onConfirm: null,
+  });
+  const [outputPanel, setOutputPanel] = useState({
+    isOpen: false,
+    title: '',
+    output: '',
+    loading: false,
+  });
 
-  // Auth check
+  // Inicialização de tema, dispositivo e validação de sessão
   useEffect(() => {
-    const validateAuth = async () => {
-      const token = localStorage.getItem('dashboard-token');
-      if (!token) {
-        window.location.href = '/login';
-        return;
-      }
-
-      try {
-        const res = await fetch('/api/auth/validate', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (res.status === 401) {
-          localStorage.removeItem('dashboard-token');
-          window.location.href = '/login';
-          return;
-        }
-
-        const data = await res.json();
-        if (data.ok) {
-          setAuthValid(true);
-        } else {
-          localStorage.removeItem('dashboard-token');
-          window.location.href = '/login';
-        }
-      } catch (err) {
-        localStorage.removeItem('dashboard-token');
-        window.location.href = '/login';
-      }
-    };
-
-    validateAuth();
-  }, []);
-
-  // Theme loader
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('dashboard-theme') || 'light';
+    const savedTheme = localStorage.getItem('srv-theme') || 'dark';
     setTheme(savedTheme);
-    const root = document.documentElement;
-    if (savedTheme === 'dark') {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
+    document.documentElement.setAttribute('data-theme', savedTheme);
+
+    const savedOverride = localStorage.getItem('srv-ssh-override') || '';
+    setSshOverride(savedOverride);
+
+    const savedView = sessionStorage.getItem('srv-active-view');
+    if (savedView && NAV_ITEMS.some((i) => i.id === savedView)) {
+      setActiveView(savedView);
     }
-  }, []);
+
+    const identity = getOrInitDeviceIdentity();
+    setDeviceIdentity(identity);
+
+    const token = localStorage.getItem('dashboard-token');
+    if (!token) {
+      router.push('/login');
+      return;
+    }
+
+    const savedUser = localStorage.getItem('srv-username');
+    if (savedUser) setCurrentUser(savedUser);
+  }, [router]);
 
   const toggleTheme = () => {
-    const nextTheme = theme === 'dark' ? 'light' : 'dark';
-    setTheme(nextTheme);
-    localStorage.setItem('dashboard-theme', nextTheme);
-    const root = document.documentElement;
-    if (nextTheme === 'dark') {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    localStorage.setItem('srv-theme', next);
+    document.documentElement.setAttribute('data-theme', next);
+  };
+
+  const handleSelectView = (viewId) => {
+    setActiveView(viewId);
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('srv-active-view', viewId);
     }
   };
 
-  // Status fetcher
-  const fetchStatus = useCallback(() => {
-    apiFetch('/api/status')
-      .then((data) => {
-        if (data.ok) {
-          setServerStatus(data);
-        } else {
-          setServerStatus({ online: false });
+  // Wrapper central de chamadas de API com identificação de dispositivo
+  const apiFetch = useCallback(
+    async (url, options = {}) => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('dashboard-token') : null;
+      const override = typeof window !== 'undefined' ? localStorage.getItem('srv-ssh-override') : '';
+      const identity = getOrInitDeviceIdentity();
+
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(override ? { 'x-ssh-override': override } : {}),
+        'x-device-id': identity.deviceId,
+        'x-device-name': identity.deviceName,
+        ...(options.headers || {}),
+      };
+
+      const res = await fetch(url, {
+        ...options,
+        headers,
+      });
+
+      if (res.status === 401) {
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('dashboard-token');
+          window.location.href = '/login';
         }
-      })
-      .catch(() => setServerStatus({ online: false }));
-  }, []);
+        throw new Error('Sessão expirada ou encerrada. Faça login novamente.');
+      }
+
+      const data = await res.json();
+      if (!data.ok) {
+        throw new Error(data.error || 'Falha na operação solicitada.');
+      }
+      return data;
+    },
+    []
+  );
+
+  // Registro assíncrono de eventos do cliente nos logs do servidor
+  const logClientEvent = useCallback(
+    (event, message = 'ok', details = {}, level = 'info') => {
+      apiFetch('/api/logs', {
+        method: 'POST',
+        body: JSON.stringify({ event, message, details, level }),
+      }).catch(() => {});
+    },
+    [apiFetch]
+  );
+
+  const fetchStatus = useCallback(
+    async (force = false) => {
+      try {
+        const data = await apiFetch(`/api/status${force ? '?force=1' : ''}`);
+        setServerStatus({
+          online: Boolean(data.online),
+          cpu: data.cpu || 0,
+          uptime: data.uptime || '',
+          memory: data.memory || { total: 0, used: 0, percent: 0 },
+          disks: Array.isArray(data.disks) ? data.disks : [],
+          runningContainers: Array.isArray(data.runningContainers) ? data.runningContainers : [],
+          activeDevices: data.activeDevices || 1,
+          host: data.host || '',
+          port: data.port || 22,
+          route: data.route || '',
+        });
+      } catch (_) {
+        setServerStatus((prev) => ({ ...prev, online: false }));
+      } finally {
+        setStatusLoading(false);
+      }
+    },
+    [apiFetch]
+  );
 
   useEffect(() => {
-    if (!authValid) return;
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 10000);
+    fetchStatus(false);
+    const interval = setInterval(() => fetchStatus(false), 12000);
     return () => clearInterval(interval);
-  }, [authValid, fetchStatus]);
+  }, [fetchStatus]);
+
+  const showOutput = (title, output, loading = false) => {
+    setOutputPanel({ isOpen: true, title, output, loading });
+  };
+
+  const askConfirm = (title, message, onConfirm, danger = true) => {
+    setConfirmModal({
+      isOpen: true,
+      title,
+      message,
+      danger,
+      onConfirm: async () => {
+        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+        await onConfirm();
+      },
+    });
+  };
+
+  // Abre módulo web embarcado ou em nova guia com suporte multi-dispositivo (sem derrubar sessões alheias)
+  const openModule = async ({ name, port, protocol = 'http:', sandboxRoute = null, path = '', externalOnly = false }) => {
+    setAppLoading(true);
+    setAppLoadingText(`Inicializando ${name} (porta ${port})...`);
+    try {
+      if (sandboxRoute) {
+        await apiFetch(sandboxRoute, { method: 'POST' });
+      }
+
+      const isLocalHttp =
+        typeof window !== 'undefined' &&
+        window.location.protocol === 'http:' &&
+        (window.location.hostname === 'localhost' ||
+          window.location.hostname.startsWith('192.168.') ||
+          window.location.hostname.startsWith('100.'));
+
+      setAppLoadingText(`Conectando roteamento para ${name}...`);
+      const tunnelData = await apiFetch('/api/tunnel', {
+        method: 'POST',
+        body: JSON.stringify({
+          port,
+          protocol,
+          mode: isLocalHttp ? 'local_http' : 'tunnel',
+          appName: name,
+        }),
+      });
+
+      const baseUrl = tunnelData.url.replace(/\/$/, '');
+      const finalUrl = `${baseUrl}${path || ''}`;
+
+      // Se a URL for HTTP em página HTTPS, usa /api/proxy para evitar bloqueio Mixed Content
+      const isHttpsPage = typeof window !== 'undefined' && window.location.protocol === 'https:';
+      const embedUrl =
+        isHttpsPage && finalUrl.startsWith('http://')
+          ? `/api/proxy?url=${encodeURIComponent(finalUrl)}`
+          : finalUrl;
+
+      logClientEvent('module.open', 'opened', { name, port, url: finalUrl });
+
+      if (externalOnly) {
+        window.open(finalUrl, '_blank', 'noopener,noreferrer');
+      } else {
+        setActiveApp({
+          name,
+          port,
+          url: embedUrl,
+          rawUrl: finalUrl,
+        });
+      }
+      fetchStatus(true);
+    } catch (err) {
+      logClientEvent('module.open_error', err.message, { name, port }, 'error');
+      showOutput(`Erro ao abrir ${name}`, err.message, false);
+    } finally {
+      setAppLoading(false);
+      setAppLoadingText('');
+    }
+  };
+
+  // Fecha apenas a visualização neste aparelho, preservando túneis para outros aparelhos conectados
+  const closeActiveApp = async () => {
+    const closedApp = activeApp;
+    setActiveApp(null);
+    if (closedApp) {
+      try {
+        await apiFetch('/api/tunnel', {
+          method: 'POST',
+          body: JSON.stringify({ action: 'stop' }),
+        });
+      } catch (_) {}
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('dashboard-token');
     router.push('/login');
   };
 
-  const isRunning = useCallback((app) => {
-    if (!serverStatus?.runningContainers) return false;
-    if (app.type === 'static') return true;
-    // Use containerName from app definition when available, fallback to sandbox pattern
-    const containerName = app.containerName || `srv_${app.id}_sandbox`;
-    return serverStatus.runningContainers.some(c =>
-      c.toLowerCase() === containerName.toLowerCase() || c.toLowerCase().includes(containerName.toLowerCase())
-    );
-  }, [serverStatus]);
-
-  // Sandbox/Service Launcher
-  const selectApp = async (app) => {
-    setActiveTab('app');
-    setActiveApp(app);
-    setIframeUrl('');
-    setMobileMenuOpen(false);
-    
-    // ALWAYS use the server's own IP for container URLs.
-    // Containers run on the server — NOT on the browser's machine.
-    // serverStatus.host is the IP that SSH successfully connected to (LAN or VPN).
-    const serverHost = serverStatus?.host || '192.168.15.109';
-    const protocol  = app.protocol || 'http:';
-    const path      = app.path || '';
-    const targetUrl = `${protocol}//${serverHost}:${app.port}${path}`;
-
-    // Helper: check if a specific container is running
-    const isContainerRunning = (name) => {
-      if (!serverStatus?.runningContainers) return false;
-      return serverStatus.runningContainers.some(c =>
-        c.toLowerCase() === name.toLowerCase() || c.toLowerCase().includes(name.toLowerCase())
-      );
-    };
-
-    // Resolve the final URL: if accessing from Vercel (not LAN), use ngrok tunnel
-    const isIPOrLocalhost = (h) => {
-      if (h === 'localhost' || h === '127.0.0.1') return true;
-      return /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(h) || h.endsWith('.local');
-    };
-    const isLocal = isIPOrLocalhost(window.location.hostname);
-    const resolveUrl = async () => {
-      if (!isLocal) {
-        setLaunchMessage('Criando túnel seguro...');
-        try {
-          const tunRes = await apiFetch('/api/tunnel', { method: 'POST', body: JSON.stringify({ port: app.port, protocol: app.protocol || 'http:' }) });
-          if (tunRes.ok && tunRes.url) {
-            const separator = (tunRes.url + path).includes('?') ? '&' : '?';
-            return tunRes.url + path + separator + '_t=' + Date.now();
-          } else if (tunRes.error) {
-            throw new Error(tunRes.error);
-          }
-        } catch (e) {
-          throw e;
-        }
-      }
-      return targetUrl;
-    };
-
-    // If it's a sandbox, start/check it
-    if (app.type === 'sandbox') {
-      setLaunching(true);
-      setLaunchMessage(`Iniciando ${app.name}...`);
-      try {
-        const res = await apiFetch(`/api/sandbox/${app.id}`, { method: 'POST' });
-        if (res.ok) {
-          setLaunchMessage('Conectando...');
-          const finalUrl = await resolveUrl();
-          setIframeUrl(finalUrl);
-          setLaunching(false);
-          fetchStatus();
-        } else {
-          addToast(res.error || 'Erro ao iniciar aplicativo.', 'error');
-          setLaunching(false);
-          setActiveTab('home');
-        }
-      } catch (err) {
-        addToast(err?.message || 'Erro de conexão.', 'error');
-        setLaunching(false);
-        setActiveTab('home');
-      }
-    } 
-    // Docker Compose service — check by containerName (defined in apps array)
-    else if (app.type === 'service') {
-      const containerName = app.containerName || `srv_${app.id}`;
-      const running = isContainerRunning(containerName);
-
-      if (running) {
-        setLaunching(true);
-        setLaunchMessage('Conectando...');
-        try {
-          const finalUrl = await resolveUrl();
-          setIframeUrl(finalUrl);
-        } catch (err) {
-          addToast(err?.message || 'Erro ao conectar ao serviço.', 'error');
-          setActiveTab('home');
-        } finally {
-          setLaunching(false);
-        }
-      } else {
-        if (window.confirm(`O serviço ${app.name} não está ativo. Deseja iniciá-lo agora?`)) {
-          setLaunching(true);
-          setLaunchMessage(`Iniciando ${app.name}...`);
-          try {
-            const res = await apiFetch('/api/services', {
-              method: 'POST',
-              body: JSON.stringify({ service: app.serviceName, action: 'start' })
-            });
-            if (res.ok) {
-              addToast(`Serviço ${app.name} iniciado!`, 'success');
-              setTimeout(async () => {
-                try {
-                  const finalUrl = await resolveUrl();
-                  setIframeUrl(finalUrl);
-                } catch (err) {
-                  addToast(err?.message || 'Erro ao conectar ao serviço.', 'error');
-                  setActiveTab('home');
-                } finally {
-                  setLaunching(false);
-                  fetchStatus();
-                }
-              }, 5000);
-            } else {
-              addToast(res.error || 'Erro ao iniciar serviço.', 'error');
-              setLaunching(false);
-              setActiveTab('home');
-            }
-          } catch (err) {
-            addToast(err?.message || 'Erro de conexão.', 'error');
-            setLaunching(false);
-            setActiveTab('home');
-          }
-        } else {
-          setActiveTab('home');
-        }
-      }
-    } 
-    // Static app
-    else {
-      setLaunching(true);
-      setLaunchMessage('Conectando...');
-      try {
-        const finalUrl = await resolveUrl();
-        setIframeUrl(finalUrl);
-      } catch (err) {
-        addToast(err?.message || 'Erro ao conectar ao aplicativo.', 'error');
-        setActiveTab('home');
-      } finally {
-        setLaunching(false);
-      }
-    }
-  };
-
-  const closeActiveApp = () => {
-    setActiveTab('home');
-    setActiveApp(null);
-    setIframeUrl('');
-    const isIPOrLocalhost = (h) => {
-      if (h === 'localhost' || h === '127.0.0.1') return true;
-      return /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(h) || h.endsWith('.local');
-    };
-    if (!isIPOrLocalhost(window.location.hostname)) {
-      apiFetch('/api/tunnel', { method: 'POST', body: JSON.stringify({ action: 'stop' }) }).catch(()=>{});
-    }
-  };
-
-  const reloadIframe = () => {
-    const prev = iframeUrl;
-    setIframeUrl('');
-    setTimeout(() => setIframeUrl(prev), 100);
-  };
-
-  const stopActiveAppContainer = async () => {
-    if (!activeApp) return;
-    if (!window.confirm(`Deseja realmente parar o contêiner do aplicativo ${activeApp.name}?`)) return;
-
-    setLaunching(true);
-    setLaunchMessage('Parando...');
-    try {
-      let endpoint = '';
-      let body = {};
-      
-      if (activeApp.type === 'sandbox') {
-        endpoint = '/api/docker/stop';
-        let name = `srv_${activeApp.id}_sandbox`;
-        if (activeApp.id === 'filebrowser') name = 'srv_filebrowser';
-        else if (activeApp.id === 'antigravity') name = 'srv_ag_sandbox';
-        else if (activeApp.id === 'neovim') name = 'srv_nvim_sandbox';
-        body = { name };
-      } else if (activeApp.type === 'service') {
-        endpoint = '/api/services';
-        body = { service: activeApp.serviceName, action: 'stop' };
-      }
-
-      if (endpoint) {
-        const res = await apiFetch(endpoint, {
-          method: 'POST',
-          body: JSON.stringify(body)
-        });
-        if (res.ok) {
-          addToast(`Aplicativo ${activeApp.name} parado.`, 'success');
-          closeActiveApp();
-          fetchStatus();
-        } else {
-          addToast(res.error || 'Erro ao parar aplicativo.', 'error');
-        }
-      }
-    } catch {
-      addToast('Erro de rede.', 'error');
-    }
-    setLaunching(false);
-  };
-
-  if (!authValid) {
-    return null;
-  }
-
-  const isOnline = serverStatus?.online;
-
   return (
-    <div className="flex flex-col h-[100dvh] bg-[var(--md-sys-color-background)] overflow-hidden text-[var(--md-sys-color-on-background)] relative">
-      {/* Barra de Cabeçalho Superior para Celular */}
-      <header className={`md:hidden h-[calc(3.5rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] border-b border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex items-center justify-between pl-[calc(1rem+env(safe-area-inset-left))] pr-[calc(1rem+env(safe-area-inset-right))] flex-shrink-0 z-20 ${
-        activeTab === 'app' ? 'hidden' : 'flex'
-      }`}>
-        <button 
-          onClick={() => setMobileMenuOpen(true)} 
-          className="w-9 h-9 rounded-xl flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)] hover:bg-black/5"
-        >
-          <span className="material-symbols-outlined text-xl">menu</span>
-        </button>
-        <span className="font-bold tracking-tight text-sm google-sans">SRV</span>
-        <div className="w-9 h-9" />
-      </header>
-
-      <div className={`flex flex-1 h-full overflow-hidden relative ${mobileMenuOpen ? 'z-50' : 'z-10'}`}>
-        {/* ─── SIDEBAR (Desktop/Mobile Collapsed) ────────────────────────────────── */}
-        <aside className={`border-r border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex flex-col justify-between flex-shrink-0 z-50 transition-all duration-200 w-[calc(4rem+env(safe-area-inset-left))] pl-[env(safe-area-inset-left)] ${
-          mobileMenuOpen ? 'fixed inset-y-0 left-0' : 'hidden md:flex'
-        }`}>
-          <div className="flex flex-col flex-1 overflow-y-auto pt-[env(safe-area-inset-top)]">
-            {/* Brand header */}
-            <div className="flex items-center justify-center py-4 border-b border-[var(--md-sys-color-surface-variant)] relative">
-              <div className="w-10 h-10 rounded-xl bg-[var(--md-sys-color-primary-container)] flex items-center justify-center relative">
-                <span className="material-symbols-outlined text-[var(--md-sys-color-on-primary-container)] text-lg icon-filled">dns</span>
-              </div>
-            </div>
-
-            {/* Navigation Menu */}
-            <div className="px-2 py-4 flex flex-col items-center gap-1.5 overflow-y-auto flex-1 w-full">
-              {[
-                { id: 'home', name: 'Início', icon: 'home' },
-                { id: 'docker', name: 'Docker', icon: 'view_in_ar' },
-                { id: 'vm', name: 'VM', icon: 'computer' },
-                { id: 'ia', name: 'IA', icon: 'psychology' },
-                { id: 'backup', name: 'Backup', icon: 'cloud_sync' },
-                { id: 'users', name: 'Contas', icon: 'group' },
-                { id: 'maintenance', name: 'Ajustes', icon: 'build' }
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => {
-                    if (activeApp) {
-                      closeActiveApp();
-                    }
-                    setActiveTab(tab.id);
-                    setMobileMenuOpen(false);
-                  }}
-                  title={tab.name}
-                  className={`w-10 h-10 flex flex-shrink-0 items-center justify-center rounded-xl transition-all ${
-                    activeTab === tab.id
-                      ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)]'
-                      : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[18px]">{tab.icon}</span>
-                </button>
-              ))}
-
-              {apps.map((app) => (
-                <button
-                  key={app.id}
-                  onClick={() => selectApp(app)}
-                  title={app.name}
-                  className={`w-10 h-10 flex-shrink-0 rounded-xl flex items-center justify-center transition-all ${
-                    activeTab === 'app' && activeApp?.id === app.id
-                      ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)]'
-                      : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]/50'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[18px]">{app.icon}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Footer controls */}
-          <div className="p-3 border-t border-[var(--md-sys-color-surface-variant)] flex flex-col items-center gap-2">
-            <button onClick={toggleTheme} className="w-10 h-10 rounded-xl bg-[var(--md-sys-color-surface-variant)] flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)]">
-              <span className="material-symbols-outlined text-base">
-                {theme === 'dark' ? 'light_mode' : 'dark_mode'}
-              </span>
-            </button>
-
-            <button onClick={handleLogout} className="w-10 h-10 rounded-xl bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)] flex items-center justify-center">
-              <span className="material-symbols-outlined text-base">logout</span>
-            </button>
-          </div>
-        </aside>
-
-        {/* Backdrop overlay for mobile menu */}
-        {mobileMenuOpen && (
-          <div onClick={() => setMobileMenuOpen(false)} className="fixed inset-0 z-40 bg-black/30 md:hidden" />
-        )}
-
-        {/* ─── MAIN WORKSPACE ─── */}
-        <div className="flex-1 flex flex-col overflow-hidden pl-[env(safe-area-inset-left)] md:pl-0 pr-[env(safe-area-inset-right)]">
-          {/* Content Pane */}
-          <main className={`flex-1 overflow-y-auto relative ${
-            activeTab === 'app' ? 'p-0' : 'p-4 md:p-6'
-          }`}>
-
-
-            {activeTab === 'home' && <HomeView apps={apps} selectApp={selectApp} serverStatus={serverStatus} addToast={addToast} fetchStatus={fetchStatus} isRunning={isRunning} setActiveTab={setActiveTab} />}
-            {activeTab === 'docker' && <DockerView addToast={addToast} />}
-            {activeTab === 'vm' && <VmView serverStatus={serverStatus} addToast={addToast} />}
-            {activeTab === 'ia' && <IaHubView addToast={addToast} />}
-            {activeTab === 'backup' && <BackupView serverStatus={serverStatus} addToast={addToast} />}
-            {activeTab === 'users' && <UsersView addToast={addToast} />}
-            {activeTab === 'maintenance' && <MaintenanceView serverStatus={serverStatus} addToast={addToast} fetchStatus={fetchStatus} />}
-            
-            {activeTab === 'app' && activeApp && (
-              <div className="w-full h-full flex flex-col bg-[var(--md-sys-color-surface)] md:border md:border-[var(--md-sys-color-surface-variant)] md:rounded-2xl overflow-hidden">
-                {/* App Iframe Controls */}
-                <div className="h-10 px-4 bg-[var(--md-sys-color-surface-variant)] flex items-center justify-between border-b border-[var(--md-sys-color-surface-variant)] flex-shrink-0 text-xs">
-                  <div className="flex items-center gap-2 max-w-[50%] sm:max-w-xs overflow-hidden">
-                    <button 
-                      onClick={closeActiveApp} 
-                      title="Voltar" 
-                      className="h-7 px-2 rounded-lg hover:bg-black/5 flex items-center gap-1 text-[var(--md-sys-color-on-surface-variant)] font-semibold flex-shrink-0"
-                    >
-                      <span className="material-symbols-outlined text-[16px]">arrow_back</span>
-                      <span className="hidden sm:inline">Voltar</span>
-                    </button>
-                    <span className="font-mono text-[10px] text-[var(--md-sys-color-on-surface-variant)] truncate">
-                      {iframeUrl || 'Carregando...'}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {iframeUrl && (
-                      <a 
-                        href={iframeUrl} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
-                        title="Abrir em nova aba" 
-                        className="w-7 h-7 rounded-lg hover:bg-black/5 flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)]"
-                      >
-                        <span className="material-symbols-outlined text-[16px]">open_in_new</span>
-                      </a>
-                    )}
-                    <button onClick={reloadIframe} title="Recarregar" className="w-7 h-7 rounded-lg hover:bg-black/5 flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)]">
-                      <span className="material-symbols-outlined text-[16px]">refresh</span>
-                    </button>
-                    <button onClick={stopActiveAppContainer} title="Parar" className="w-7 h-7 rounded-lg hover:bg-black/5 flex items-center justify-center text-[var(--md-sys-color-error)]">
-                      <span className="material-symbols-outlined text-[16px]">stop_circle</span>
-                    </button>
-                  </div>
-                </div>
-                <div className="flex-1 bg-[var(--md-sys-color-background)] relative">
-                  {iframeUrl ? (
-                    activeApp.skipIframe ? (
-                      <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center space-y-3 max-w-xs mx-auto">
-                        <h3 className="text-xs font-semibold text-[var(--md-sys-color-on-surface)]">
-                          {activeApp.name}
-                        </h3>
-                        <a 
-                          href={iframeUrl} 
-                          target="_blank" 
-                          rel="noopener noreferrer" 
-                          className="btn-primary py-1.5 px-4 rounded-xl font-medium flex items-center justify-center gap-1 text-xs"
-                        >
-                          <span className="material-symbols-outlined text-sm">open_in_new</span>
-                          <span>Abrir</span>
-                        </a>
-                      </div>
-                    ) : typeof window !== 'undefined' && window.location.protocol === 'https:' && iframeUrl.startsWith('http://') ? (
-                      <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center space-y-4 max-w-sm mx-auto">
-                        <div className="w-12 h-12 rounded-full bg-[var(--md-sys-color-error-container)] flex items-center justify-center text-[var(--md-sys-color-error)]">
-                          <span className="material-symbols-outlined text-2xl">security_update_warning</span>
-                        </div>
-                        <div className="space-y-1">
-                          <h3 className="text-sm font-semibold text-[var(--md-sys-color-on-surface)]">
-                            Acesso via Bore
-                          </h3>
-                          <p className="text-[11px] text-[var(--md-sys-color-on-surface-variant)] leading-relaxed">
-                            Por segurança do navegador, abra o serviço em uma nova aba.
-                          </p>
-                        </div>
-                        <a 
-                          href={iframeUrl} 
-                          target="_blank" 
-                          rel="noopener noreferrer" 
-                          className="btn-primary py-2 px-5 rounded-xl font-medium flex items-center justify-center gap-1.5 text-xs shadow-sm hover:opacity-90 transition-opacity"
-                        >
-                          <span className="material-symbols-outlined text-sm">open_in_new</span>
-                          <span>Abrir em Nova Aba</span>
-                        </a>
-                      </div>
-                    ) : (
-                      <>
-                        <iframe src={iframeUrl} className="w-full h-full border-0" allow="autoplay; clipboard-read; clipboard-write; fullscreen" />
-                        {typeof window !== 'undefined' && iframeUrl.includes('ngrok') && (
-                          <div className="absolute bottom-4 left-4 right-4 bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] p-2.5 rounded-xl text-[10px] flex items-center justify-between gap-3 shadow z-10">
-                            <div className="flex items-center gap-2">
-                              <span className="material-symbols-outlined text-[var(--md-sys-color-primary)] text-sm">info</span>
-                              <span>Túnel Ngrok ativo. Se necessário, abra em nova aba para autorizar o acesso.</span>
-                            </div>
-                            <a href={iframeUrl} target="_blank" rel="noopener noreferrer" className="bg-[var(--md-sys-color-primary)] text-white px-3 py-1.5 rounded-lg flex items-center justify-center gap-1 hover:opacity-90 transition-opacity whitespace-nowrap">
-                              <span className="material-symbols-outlined text-xs">open_in_new</span>
-                              <span>Abrir</span>
-                            </a>
-                          </div>
-                        )}
-                      </>
-                    )
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-xs text-[var(--md-sys-color-on-surface-variant)]">
-                      Iniciando aplicação...
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </main>
-        </div>
-      </div>
-
-      {/* Bottom Navigation for Mobile */}
-      <nav className={`md:hidden border-t border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex items-center justify-around flex-shrink-0 z-20 pb-[env(safe-area-inset-bottom)] pt-2 pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] ${
-        activeTab === 'app' || mobileMenuOpen ? 'hidden' : 'flex'
-      }`}>
-        {[
-          { id: 'home', icon: 'home' },
-          { id: 'docker', icon: 'view_in_ar' },
-          { id: 'ia', icon: 'psychology' },
-          { id: 'backup', icon: 'cloud_sync' },
-          { id: 'users', icon: 'group' },
-          { id: 'maintenance', icon: 'build' }
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => {
-              if (activeApp) {
-                closeActiveApp();
-              }
-              setActiveTab(tab.id);
-            }}
-            className="flex items-center justify-center flex-1 py-2 text-[var(--md-sys-color-on-surface-variant)] hover:text-[var(--md-sys-color-primary)] transition-all"
-          >
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
-              activeTab === tab.id 
-                ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)]' 
-                : ''
-            }`}>
-              <span className={`material-symbols-outlined text-xl ${activeTab === tab.id ? 'icon-filled text-[var(--md-sys-color-on-primary-container)]' : ''}`}>{tab.icon}</span>
-            </div>
-          </button>
-        ))}
-      </nav>
-
-      <Toast toasts={toasts} removeToast={removeToast} />
-    </div>
-  );
-}
-
-// ─── HOME VIEW ──────────────────────────────────────────────────────────────
-function HomeView({ apps, selectApp, serverStatus, addToast, fetchStatus, isRunning, setActiveTab }) {
-  const [loading, setLoading] = useState(false);
-  const [showSshConfig, setShowSshConfig] = useState(false);
-  const [sshOverrideInput, setSshOverrideInput] = useState(
-    typeof window !== 'undefined' ? localStorage.getItem('srv-ssh-override') || '' : ''
-  );
-
-  const saveSshOverride = (e) => {
-    e.preventDefault();
-    const val = sshOverrideInput.trim();
-    if (val) {
-      localStorage.setItem('srv-ssh-override', val);
-      addToast(`Rota SSH alterada para ${val}`, 'success');
-    } else {
-      localStorage.removeItem('srv-ssh-override');
-      addToast('Rota SSH restaurada para o padrão (.env)', 'info');
-    }
-    setShowSshConfig(false);
-    fetchStatus();
-  };
-
-  const triggerPower = async (action) => {
-    const label = action === 'reboot' ? 'reiniciar' : 'desligar';
-    if (!window.confirm(`Deseja realmente ${label} o servidor remoto?`)) return;
-
-    setLoading(true);
-    try {
-      const data = await apiFetch(`/api/power/${action}`, { method: 'POST' });
-      if (data.ok) addToast('Comando executado com sucesso.', 'success');
-      else addToast(data.error || 'Erro ao executar comando.', 'error');
-    } catch {
-      addToast('Erro ao conectar.', 'error');
-    }
-    setLoading(false);
-  };
-
-  const triggerWol = async () => {
-    setLoading(true);
-    try {
-      const data = await apiFetch('/api/power/wol', { method: 'POST' });
-      if (data.ok) addToast(data.message, 'success');
-      else addToast(data.error, 'error');
-    } catch {
-      addToast('Erro ao enviar Magic Packet.', 'error');
-    }
-    setLoading(false);
-    setTimeout(fetchStatus, 3000);
-  };
-
-  const safeIsRunning = typeof isRunning === 'function' ? isRunning : () => false;
-
-  return (
-    <div className="space-y-5">
-      {/* Top Welcome / Quick Info Bar */}
-      <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="min-h-screen bg-[var(--md-sys-color-background)] text-[var(--md-sys-color-on-background)] flex flex-col">
+      {/* Barra Superior Técnica */}
+      <header className="sticky top-0 z-30 bg-[var(--md-sys-color-surface)] border-b border-[var(--md-sys-color-surface-variant)] px-4 py-2.5">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <span className={`material-symbols-outlined text-lg ${serverStatus?.online ? 'text-green-500' : 'text-[var(--md-sys-color-error)]'}`}>
-              dns
-            </span>
-            <div className="flex flex-col min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] flex items-center justify-center flex-shrink-0">
+              <span className="material-symbols-outlined text-xl">dns</span>
+            </div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-[var(--md-sys-color-on-surface)] truncate">
-                  {serverStatus?.online
-                    ? `${serverStatus.host}${serverStatus.port && serverStatus.port !== 22 ? `:${serverStatus.port}` : ''}`
-                    : 'Servidor Offline / Inalcançável'}
+                <h1 className="text-sm font-bold tracking-tight google-sans truncate">
+                  Painel de Controle do Servidor
+                </h1>
+                <span className="px-2 py-0.5 text-[10px] font-mono rounded bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)]">
+                  {serverStatus.online ? 'CONECTADO' : statusLoading ? 'VERIFICANDO' : 'OFFLINE'}
                 </span>
-                {serverStatus?.online && serverStatus?.route && (
-                  <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)]">
-                    {serverStatus.route}
-                  </span>
-                )}
               </div>
-              {serverStatus?.online && (
-                <span className="text-[10px] text-[var(--md-sys-color-on-surface-variant)]">
-                  Uptime: {serverStatus.uptime || 'ativo'} • CPU: {serverStatus.cpu ?? 0}% • RAM: {serverStatus.memory?.used ?? 0}/{serverStatus.memory?.total ?? 0} GB ({serverStatus.memory?.percent ?? 0}%)
-                </span>
-              )}
+              <p className="text-[11px] text-[var(--md-sys-color-on-surface-variant)] truncate font-mono">
+                Dispositivo: {deviceIdentity.deviceName || 'Web'} • Usuário: {currentUser} • Sessões ativas: {serverStatus.activeDevices || 1}
+              </p>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5">
             <button
-              onClick={() => setShowSshConfig((v) => !v)}
-              title="Configurar Rota / Porta do Túnel SSH (ex: bore.pub:PORTA)"
-              className="h-9 px-2.5 rounded-xl border border-[var(--md-sys-color-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)] flex items-center gap-1 text-[11px] font-medium"
+              onClick={() => fetchStatus(true)}
+              title="Atualizar estado do servidor"
+              className="p-2 rounded-xl hover:bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)] transition-colors"
             >
-              <span className="material-symbols-outlined text-base">settings_ethernet</span>
-              <span className="hidden sm:inline">Rota SSH</span>
+              <span className="material-symbols-outlined text-lg">refresh</span>
             </button>
-            {setActiveTab && (
-              <button
-                onClick={() => setActiveTab('maintenance')}
-                title="Abrir Console SSH Direto & Gerenciador de Processos"
-                className="h-9 px-2.5 rounded-xl bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] flex items-center gap-1 text-[11px] font-semibold"
-              >
-                <span className="material-symbols-outlined text-base">terminal</span>
-                <span className="hidden sm:inline">Controle Direto</span>
-              </button>
-            )}
-            {!serverStatus?.online && (
-              <button onClick={triggerWol} disabled={loading} title="Ligar (WOL)" className="w-9 h-9 rounded-xl bg-[var(--md-sys-color-primary)] text-white flex items-center justify-center transition-opacity hover:opacity-90">
-                <span className="material-symbols-outlined text-base">bolt</span>
-              </button>
-            )}
-            <button onClick={() => triggerPower('reboot')} disabled={loading || !serverStatus?.online} title="Reiniciar" className="w-9 h-9 rounded-xl border border-[var(--md-sys-color-warning)]/20 text-[var(--md-sys-color-warning)] bg-transparent hover:bg-[var(--md-sys-color-warning-container)]/10 flex items-center justify-center disabled:opacity-50">
-              <span className="material-symbols-outlined text-base">restart_alt</span>
+            <button
+              onClick={toggleTheme}
+              title="Alternar tema claro/escuro"
+              className="p-2 rounded-xl hover:bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)] transition-colors"
+            >
+              <span className="material-symbols-outlined text-lg">
+                {theme === 'dark' ? 'light_mode' : 'dark_mode'}
+              </span>
             </button>
-            <button onClick={() => triggerPower('shutdown')} disabled={loading || !serverStatus?.online} title="Desligar" className="w-9 h-9 rounded-xl bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)] hover:bg-[var(--md-sys-color-error-container)]/80 flex items-center justify-center disabled:opacity-50">
-              <span className="material-symbols-outlined text-base">power_off</span>
+            <button
+              onClick={handleLogout}
+              title="Encerrar sessão neste dispositivo"
+              className="px-3 py-1.5 rounded-xl text-xs font-medium bg-[var(--md-sys-color-surface-variant)] hover:opacity-90 text-[var(--md-sys-color-on-surface)] flex items-center gap-1.5 transition-all"
+            >
+              <span className="material-symbols-outlined text-base">logout</span>
+              <span className="hidden sm:inline">Sair</span>
             </button>
           </div>
         </div>
 
-        {showSshConfig && (
-          <form onSubmit={saveSshOverride} className="pt-2 border-t border-[var(--md-sys-color-surface-variant)] flex flex-col sm:flex-row gap-2 text-xs">
-            <input
-              type="text"
-              value={sshOverrideInput}
-              onChange={(e) => setSshOverrideInput(e.target.value)}
-              placeholder="Override de conexão (ex: bore.pub:54321, 100.119.122.10:22 ou 192.168.15.109:22) — vazio usa o padrão"
-              className="flex-1 bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3 py-2 outline-none font-mono text-[11px]"
-            />
-            <div className="flex gap-1.5">
-              <button type="submit" className="btn-primary px-3.5 py-2 rounded-xl font-semibold text-xs">
-                Aplicar Rota
-              </button>
-              {sshOverrideInput && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSshOverrideInput('');
-                    localStorage.removeItem('srv-ssh-override');
-                    setShowSshConfig(false);
-                    fetchStatus();
-                  }}
-                  className="px-3 py-2 rounded-xl border border-[var(--md-sys-color-surface-variant)] text-xs"
-                >
-                  Limpar
-                </button>
-              )}
-            </div>
-          </form>
-        )}
-      </div>
-
-      {/* Quick Launch App Grid */}
-      <div className="space-y-2">
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-          {apps.map((app) => {
-            const running = safeIsRunning(app);
+        {/* Navegação de Módulos */}
+        <nav className="max-w-7xl mx-auto mt-2.5 flex items-center gap-1 overflow-x-auto pb-1 no-scrollbar">
+          {NAV_ITEMS.map((item) => {
+            const isSelected = activeView === item.id && !activeApp;
             return (
               <button
-                key={app.id}
-                onClick={() => selectApp(app)}
-                className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl flex flex-col items-center justify-center text-center transition-all hover:border-[var(--md-sys-color-primary)] relative group"
+                key={item.id}
+                onClick={() => {
+                  if (activeApp) closeActiveApp();
+                  handleSelectView(item.id);
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-medium flex items-center gap-1.5 whitespace-nowrap transition-all ${
+                  isSelected
+                    ? 'bg-[var(--md-sys-color-primary)] text-white'
+                    : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
+                }`}
               >
-                {running && (
-                  <span className="absolute top-2.5 right-2.5 flex h-2 w-2" title="Em execução">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                  </span>
-                )}
-                <span className="material-symbols-outlined text-xl mb-1.5 text-[var(--md-sys-color-on-surface-variant)]">{app.icon}</span>
-                <span className="text-[11px] font-medium truncate w-full">{app.name}</span>
+                <span className="material-symbols-outlined text-base">{item.icon}</span>
+                <span>{item.label}</span>
               </button>
             );
           })}
+        </nav>
+      </header>
+
+      {/* Indicador de inicialização de serviço/túnel */}
+      {appLoading && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] rounded-2xl p-6 max-w-sm w-full text-center space-y-3">
+            <span className="material-symbols-outlined animate-spin text-3xl text-[var(--md-sys-color-primary)]">
+              progress_activity
+            </span>
+            <p className="text-sm font-semibold">{appLoadingText || 'Conectando ao serviço...'}</p>
+            <p className="text-xs text-[var(--md-sys-color-on-surface-variant)]">
+              Preparando instância e rota para este dispositivo.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Visualização de Aplicativo Embarcado */}
+      {activeApp ? (
+        <div className="flex-1 flex flex-col bg-[var(--md-sys-color-background)]">
+          <div className="bg-[var(--md-sys-color-surface)] border-b border-[var(--md-sys-color-surface-variant)] px-4 py-2 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-xs font-semibold truncate">{activeApp.name}</span>
+              <span className="text-[11px] font-mono text-[var(--md-sys-color-on-surface-variant)]">
+                (:{activeApp.port})
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <a
+                href={activeApp.rawUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] flex items-center gap-1 hover:opacity-90"
+              >
+                <span className="material-symbols-outlined text-sm">open_in_new</span>
+                Nova Guia
+              </a>
+              <button
+                onClick={closeActiveApp}
+                className="px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)] flex items-center gap-1 hover:opacity-90"
+              >
+                <span className="material-symbols-outlined text-sm">close</span>
+                Fechar
+              </button>
+            </div>
+          </div>
+          <iframe
+            src={activeApp.url}
+            title={activeApp.name}
+            className="flex-1 w-full border-0 bg-white"
+            allow="clipboard-read; clipboard-write; fullscreen"
+          />
+        </div>
+      ) : (
+        <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">
+          {activeView === 'home' && (
+            <HomeView
+              serverStatus={serverStatus}
+              openModule={openModule}
+              apiFetch={apiFetch}
+              fetchStatus={fetchStatus}
+              showOutput={showOutput}
+            />
+          )}
+          {activeView === 'containers' && (
+            <ContainersView
+              apiFetch={apiFetch}
+              showOutput={showOutput}
+              askConfirm={askConfirm}
+              fetchGlobalStatus={fetchStatus}
+            />
+          )}
+          {activeView === 'ia' && (
+            <AutomationView
+              apiFetch={apiFetch}
+              showOutput={showOutput}
+              openModule={openModule}
+            />
+          )}
+          {activeView === 'terminal' && (
+            <TerminalView
+              apiFetch={apiFetch}
+              openModule={openModule}
+              deviceId={deviceIdentity.deviceId}
+            />
+          )}
+          {activeView === 'sistema' && (
+            <SistemaView
+              apiFetch={apiFetch}
+              showOutput={showOutput}
+              askConfirm={askConfirm}
+              sshOverride={sshOverride}
+              setSshOverride={setSshOverride}
+              fetchGlobalStatus={fetchStatus}
+            />
+          )}
+          {activeView === 'backup' && (
+            <BackupView
+              serverStatus={serverStatus}
+              apiFetch={apiFetch}
+              showOutput={showOutput}
+            />
+          )}
+          {activeView === 'manutencao' && (
+            <ManutencaoView
+              apiFetch={apiFetch}
+              showOutput={showOutput}
+              askConfirm={askConfirm}
+            />
+          )}
+          {activeView === 'logs' && (
+            <LogsView
+              apiFetch={apiFetch}
+              deviceIdentity={deviceIdentity}
+              askConfirm={askConfirm}
+            />
+          )}
+          {activeView === 'usuarios' && (
+            <UsuariosView
+              apiFetch={apiFetch}
+              deviceIdentity={deviceIdentity}
+              setDeviceIdentity={setDeviceIdentity}
+              askConfirm={askConfirm}
+            />
+          )}
+        </main>
+      )}
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        danger={confirmModal.danger}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
+      />
+
+      <OutputPanel
+        isOpen={outputPanel.isOpen}
+        title={outputPanel.title}
+        output={outputPanel.output}
+        loading={outputPanel.loading}
+        onClose={() => setOutputPanel((prev) => ({ ...prev, isOpen: false }))}
+      />
+    </div>
+  );
+}
+
+/* ============================================================================
+ * 1. VISÃO GERAL (MÓDULOS E SERVIÇOS TÉCNICOS - SEM BANNER DE STATUS / BOLINHAS VERDES)
+ * ============================================================================ */
+function HomeView({ serverStatus, openModule, apiFetch, fetchStatus, showOutput }) {
+  const [busyService, setBusyService] = useState(null);
+  const running = serverStatus.runningContainers || [];
+
+  const isContainerActive = (containerName) => {
+    if (!containerName) return true;
+    return running.includes(containerName);
+  };
+
+  const handleServiceToggle = async (serviceKey, action, label) => {
+    setBusyService(`${serviceKey}:${action}`);
+    try {
+      const res = await apiFetch('/api/services', {
+        method: 'POST',
+        body: JSON.stringify({ service: serviceKey, action }),
+      });
+      await fetchStatus(true);
+      if (res.output) {
+        showOutput(`${label} (${action})`, res.output, false);
+      }
+    } catch (err) {
+      showOutput(`Erro em ${label}`, err.message, false);
+    } finally {
+      setBusyService(null);
+    }
+  };
+
+  const INFRA_MODULES = [
+    {
+      id: 'cockpit',
+      name: 'Console Linux (Cockpit)',
+      desc: 'Gerenciamento de sistema, systemd, rede e discos',
+      port: 9090,
+      protocol: 'https:',
+      icon: 'settings_System_daydream',
+      container: null,
+    },
+    {
+      id: 'erp',
+      name: 'Sistema ERP Operacional',
+      desc: 'Backend FastAPI + PostgreSQL e painel administrativo',
+      port: 8095,
+      protocol: 'http:',
+      icon: 'storefront',
+      container: 'srv_erp_mercados',
+      serviceKey: 'srv_erp_mercados',
+    },
+    {
+      id: 'cups',
+      name: 'Servidor de Impressão (CUPS)',
+      desc: 'Filas de impressão, drivers e dispositivos USB/Rede',
+      port: 631,
+      protocol: 'http:',
+      icon: 'print',
+      container: 'cupsd',
+      serviceKey: 'cups',
+    },
+    {
+      id: 'scanner',
+      name: 'Digitalização (ScanservJS)',
+      desc: 'Interface web para captura de documentos e OCR',
+      port: 8080,
+      protocol: 'http:',
+      icon: 'scanner',
+      container: 'scanservjs',
+      serviceKey: 'scanner',
+    },
+  ];
+
+  const SANDBOX_MODULES = [
+    {
+      id: 'vscode',
+      name: 'IDE Web (VS Code)',
+      desc: 'Editor de código completo conectado ao workspace',
+      port: 8443,
+      protocol: 'http:',
+      icon: 'code',
+      sandboxRoute: '/api/sandbox/vscode',
+      container: 'srv_vscode_sandbox',
+      serviceKey: 'srv_vscode_sandbox',
+    },
+    {
+      id: 'filebrowser',
+      name: 'Gerenciador de Arquivos',
+      desc: 'Upload, download e edição de diretórios remotos',
+      port: 8089,
+      protocol: 'http:',
+      icon: 'folder_open',
+      sandboxRoute: '/api/sandbox/filebrowser',
+      container: 'srv_filebrowser',
+      serviceKey: 'srv_filebrowser',
+    },
+    {
+      id: 'terminal_tty',
+      name: 'Terminal Web (TTY)',
+      desc: 'Sessão interativa de shell via navegador',
+      port: 7682,
+      protocol: 'http:',
+      icon: 'terminal',
+      sandboxRoute: '/api/sandbox/terminal',
+      container: 'srv_terminal_sandbox',
+      serviceKey: 'srv_terminal_sandbox',
+    },
+    {
+      id: 'neovim',
+      name: 'Editor Neovim Web',
+      desc: 'Ambiente de edição modal em container isolado',
+      port: 7683,
+      protocol: 'http:',
+      icon: 'edit_document',
+      sandboxRoute: '/api/sandbox/neovim',
+      container: 'srv_nvim_sandbox',
+      serviceKey: 'srv_nvim_sandbox',
+    },
+    {
+      id: 'cli_agent_tty',
+      name: 'Console CLI Agente',
+      desc: 'Sessão dedicada de terminal para assistente CLI',
+      port: 7685,
+      protocol: 'http:',
+      icon: 'smart_toy',
+      sandboxRoute: '/api/sandbox/antigravity',
+      container: 'srv_ag_sandbox',
+      serviceKey: 'srv_ag_sandbox',
+    },
+    {
+      id: 'webtop',
+      name: 'Desktop Remoto (Webtop)',
+      desc: 'Sessão gráfica Linux completa via navegador',
+      port: 3001,
+      protocol: 'https:',
+      icon: 'desktop_windows',
+      sandboxRoute: '/api/sandbox/webtop',
+      container: 'srv_webtop_sandbox',
+      serviceKey: 'srv_webtop_sandbox',
+    },
+    {
+      id: 'kdenlive',
+      name: 'Editor de Vídeo (Kdenlive)',
+      desc: 'Edição e renderização de mídia remota',
+      port: 3005,
+      protocol: 'http:',
+      icon: 'movie_edit',
+      sandboxRoute: '/api/sandbox/kdenlive',
+      container: 'srv_kdenlive_sandbox',
+      serviceKey: 'srv_kdenlive_sandbox',
+    },
+    {
+      id: 'steam',
+      name: 'Ambiente Gráfico (Steam)',
+      desc: 'Container acelerado para aplicações gráficas',
+      port: 8083,
+      protocol: 'http:',
+      icon: 'sports_esports',
+      sandboxRoute: '/api/sandbox/steam',
+      container: 'srv_steam_sandbox',
+      serviceKey: 'srv_steam_sandbox',
+    },
+  ];
+
+  const DATA_MODULES = [
+    {
+      id: 'metabase',
+      name: 'BI & Analytics (Metabase)',
+      desc: 'Consultas SQL, relatórios e painéis analíticos',
+      port: 3003,
+      protocol: 'http:',
+      icon: 'analytics',
+      container: 'srv_metabase',
+      serviceKey: 'srv_metabase',
+    },
+    {
+      id: 'onlyoffice',
+      name: 'Suíte Documental (OnlyOffice)',
+      desc: 'Servidor de documentos, planilhas e apresentações',
+      port: 8086,
+      protocol: 'http:',
+      icon: 'description',
+      container: 'srv_onlyoffice',
+      serviceKey: 'srv_onlyoffice',
+    },
+    {
+      id: 'jupyter',
+      name: 'Notebooks (Jupyter / Spark)',
+      desc: 'Execução de scripts Python e análise de dados',
+      port: 8888,
+      protocol: 'http:',
+      icon: 'science',
+      container: 'srv_jupyter_spark',
+      serviceKey: 'srv_jupyter_spark',
+    },
+    {
+      id: 'openwebui',
+      name: 'Interface LLM (Open WebUI)',
+      desc: 'Cliente web para modelos locais Ollama',
+      port: 3002,
+      protocol: 'http:',
+      icon: 'chat',
+      container: 'open-webui',
+      serviceKey: 'open-webui',
+    },
+    {
+      id: 'emulator',
+      name: 'Emulador Web (EmulatorJS)',
+      desc: 'Execução de imagens e ROMs via navegador',
+      port: 8082,
+      protocol: 'http:',
+      icon: 'videogame_asset',
+      container: 'emulatorjs',
+      serviceKey: 'emulator',
+    },
+  ];
+
+  const renderModuleGrid = (title, items) => (
+    <section className="space-y-3">
+      <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--md-sys-color-on-surface-variant)]">
+        {title}
+      </h2>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {items.map((mod) => {
+          const active = isContainerActive(mod.container);
+          return (
+            <div
+              key={mod.id}
+              className="bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] rounded-2xl p-4 flex flex-col justify-between gap-3"
+            >
+              <div className="space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="w-9 h-9 rounded-xl bg-[var(--md-sys-color-surface-variant)] flex items-center justify-center text-[var(--md-sys-color-primary)]">
+                    <span className="material-symbols-outlined text-lg">{mod.icon}</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)]">
+                    :{mod.port} • {active ? 'ATIVO' : 'PARADO'}
+                  </span>
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-[var(--md-sys-color-on-surface)]">
+                    {mod.name}
+                  </h3>
+                  <p className="text-xs text-[var(--md-sys-color-on-surface-variant)] mt-0.5 line-clamp-2">
+                    {mod.desc}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 pt-2 border-t border-[var(--md-sys-color-surface-variant)]">
+                <button
+                  onClick={() => openModule(mod)}
+                  className="flex-1 py-1.5 px-2.5 rounded-xl text-xs font-medium bg-[var(--md-sys-color-primary)] text-white hover:opacity-90 transition-opacity flex items-center justify-center gap-1"
+                >
+                  <span className="material-symbols-outlined text-sm">open_in_browser</span>
+                  Abrir
+                </button>
+                <button
+                  onClick={() => openModule({ ...mod, externalOnly: true })}
+                  title="Abrir em nova guia"
+                  className="p-1.5 rounded-xl bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] hover:opacity-90"
+                >
+                  <span className="material-symbols-outlined text-sm">open_in_new</span>
+                </button>
+                {mod.serviceKey && (
+                  <button
+                    disabled={busyService !== null}
+                    onClick={() =>
+                      handleServiceToggle(
+                        mod.serviceKey,
+                        active ? 'stop' : 'start',
+                        mod.name
+                      )
+                    }
+                    title={active ? 'Parar serviço' : 'Iniciar serviço'}
+                    className="py-1.5 px-2.5 rounded-xl text-xs font-medium bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] hover:opacity-90 disabled:opacity-50"
+                  >
+                    {busyService === `${mod.serviceKey}:${active ? 'stop' : 'start'}`
+                      ? '...'
+                      : active
+                      ? 'Parar'
+                      : 'Iniciar'}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+
+  return (
+    <div className="space-y-6">
+      {renderModuleGrid('Infraestrutura & Administração', INFRA_MODULES)}
+      {renderModuleGrid('Ambientes de Trabalho Isolados (Sandboxes)', SANDBOX_MODULES)}
+      {renderModuleGrid('Dados, BI & Produtividade', DATA_MODULES)}
+    </div>
+  );
+}
+
+/* ============================================================================
+ * 2. GERENCIAMENTO DE CONTAINERS DOCKER
+ * ============================================================================ */
+function ContainersView({ apiFetch, showOutput, askConfirm, fetchGlobalStatus }) {
+  const [containers, setContainers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('all');
+  const [search, setSearch] = useState('');
+  const [actionBusy, setActionBusy] = useState(null);
+
+  const loadContainers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await apiFetch('/api/docker/all');
+      const rawList = Array.isArray(data.containers) ? data.containers : [];
+      const parsed = rawList.map((item) => {
+        const name = item.Names || item.name || item.ID || 'container';
+        const status = item.Status || item.State || '';
+        const image = item.Image || '';
+        const ports = item.Ports || '';
+        const isRunning = /^Up/i.test(status) || item.State === 'running';
+        return {
+          raw: `${name} ${image} ${status} ${ports}`,
+          name,
+          image,
+          status,
+          ports,
+          isRunning,
+        };
+      });
+      setContainers(parsed);
+    } catch (err) {
+      showOutput('Erro ao listar containers', err.message, false);
+    } finally {
+      setLoading(false);
+    }
+  }, [apiFetch, showOutput]);
+
+  useEffect(() => {
+    loadContainers();
+  }, [loadContainers]);
+
+  const runContainerAction = async (name, op) => {
+    setActionBusy(`${name}:${op}`);
+    try {
+      if (op === 'logs') {
+        const res = await apiFetch(`/api/docker/logs?name=${encodeURIComponent(name)}`);
+        showOutput(`Logs: ${name}`, res.output || 'Sem logs recentes.', false);
+      } else {
+        const res = await apiFetch(`/api/docker/${op}`, {
+          method: 'POST',
+          body: JSON.stringify({ name }),
+        });
+        await loadContainers();
+        await fetchGlobalStatus(true);
+        if (res.output || res.message) {
+          showOutput(`Container ${name} (${op})`, res.output || res.message, false);
+        }
+      }
+    } catch (err) {
+      showOutput(`Erro em ${name} (${op})`, err.message, false);
+    } finally {
+      setActionBusy(null);
+    }
+  };
+
+  const handleListImages = async () => {
+    showOutput('Imagens Docker', '', true);
+    try {
+      const res = await apiFetch('/api/docker/images');
+      const imgs = Array.isArray(res.images) ? res.images : [];
+      const text = imgs.length
+        ? imgs.map((i) => `${i.Repository}:${i.Tag}  |  ID: ${i.ID}  |  Tam: ${i.Size}`).join('\n')
+        : res.output || 'Nenhuma imagem encontrada.';
+      showOutput('Imagens Docker', text, false);
+    } catch (err) {
+      showOutput('Erro ao listar imagens', err.message, false);
+    }
+  };
+
+  const filtered = containers.filter((c) => {
+    if (filter === 'running' && !c.isRunning) return false;
+    if (filter === 'stopped' && c.isRunning) return false;
+    if (search && !c.raw.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] rounded-2xl p-4">
+        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[240px]">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Filtrar container por nome ou imagem..."
+            className="flex-1 bg-[var(--md-sys-color-surface-variant)] text-xs rounded-xl px-3.5 py-2 outline-none"
+          />
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="bg-[var(--md-sys-color-surface-variant)] text-xs rounded-xl px-3 py-2 outline-none"
+          >
+            <option value="all">Todos ({containers.length})</option>
+            <option value="running">Em Execução ({containers.filter((c) => c.isRunning).length})</option>
+            <option value="stopped">Parados ({containers.filter((c) => !c.isRunning).length})</option>
+          </select>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleListImages}
+            className="px-3 py-2 rounded-xl text-xs font-medium bg-[var(--md-sys-color-surface-variant)] hover:opacity-90"
+          >
+            Imagens Docker
+          </button>
+          <button
+            onClick={loadContainers}
+            className="px-3 py-2 rounded-xl text-xs font-medium bg-[var(--md-sys-color-primary)] text-white hover:opacity-90"
+          >
+            Atualizar Lista
+          </button>
         </div>
       </div>
 
-      {/* Connected Disks summary */}
-      {serverStatus?.disks && serverStatus.disks.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {serverStatus.disks.map((d, idx) => (
-            <div key={idx} className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-3.5 rounded-2xl space-y-2 text-xs">
-              <div className="flex justify-between font-medium">
-                <span className="truncate flex items-center gap-1">
-                  <span className="material-symbols-outlined text-sm text-[var(--md-sys-color-on-surface-variant)]">hard_drive</span>
-                  {d.mount}
+      {loading ? (
+        <div className="bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] rounded-2xl p-8 text-center text-xs text-[var(--md-sys-color-on-surface-variant)]">
+          Carregando containers do servidor...
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] rounded-2xl p-8 text-center text-xs text-[var(--md-sys-color-on-surface-variant)]">
+          Nenhum container encontrado para o filtro selecionado.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {filtered.map((c) => (
+            <div
+              key={c.name}
+              className="bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] rounded-2xl p-4 flex flex-col justify-between gap-3"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <h3 className="text-sm font-bold font-mono truncate">{c.name}</h3>
+                  <p className="text-xs text-[var(--md-sys-color-on-surface-variant)] font-mono truncate mt-0.5">
+                    {c.image}
+                  </p>
+                  <p className="text-[11px] text-[var(--md-sys-color-on-surface-variant)] mt-1">
+                    Status: {c.status}
+                  </p>
+                </div>
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-[var(--md-sys-color-surface-variant)]">
+                  {c.isRunning ? 'ATIVO' : 'PARADO'}
                 </span>
-                <span className="text-[var(--md-sys-color-on-surface-variant)] font-semibold">{d.used} / {d.total}</span>
               </div>
-              <div className="w-full bg-[var(--md-sys-color-surface-variant)] h-1 rounded-full overflow-hidden">
-                <div 
-                  className="bg-[var(--md-sys-color-primary)] h-full transition-all" 
-                  style={{ width: `${d.percent}%` }}
-                />
-              </div>
-              <div className="flex justify-between text-[9px] text-[var(--md-sys-color-on-surface-variant)]">
-                <span>{d.filesystem}</span>
-                <span>{d.percent}%</span>
+
+              <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-[var(--md-sys-color-surface-variant)]">
+                {!c.isRunning ? (
+                  <button
+                    disabled={actionBusy !== null}
+                    onClick={() => runContainerAction(c.name, 'start')}
+                    className="px-3 py-1.5 rounded-xl text-xs font-medium bg-[var(--md-sys-color-primary)] text-white hover:opacity-90 disabled:opacity-50"
+                  >
+                    Iniciar
+                  </button>
+                ) : (
+                  <button
+                    disabled={actionBusy !== null}
+                    onClick={() => runContainerAction(c.name, 'stop')}
+                    className="px-3 py-1.5 rounded-xl text-xs font-medium bg-[var(--md-sys-color-surface-variant)] hover:opacity-90 disabled:opacity-50"
+                  >
+                    Parar
+                  </button>
+                )}
+                <button
+                  disabled={actionBusy !== null}
+                  onClick={() => runContainerAction(c.name, 'restart')}
+                  className="px-3 py-1.5 rounded-xl text-xs font-medium bg-[var(--md-sys-color-surface-variant)] hover:opacity-90 disabled:opacity-50"
+                >
+                  Reiniciar
+                </button>
+                <button
+                  disabled={actionBusy !== null}
+                  onClick={() => runContainerAction(c.name, 'logs')}
+                  className="px-3 py-1.5 rounded-xl text-xs font-medium bg-[var(--md-sys-color-surface-variant)] hover:opacity-90 disabled:opacity-50"
+                >
+                  Logs
+                </button>
+                <button
+                  disabled={actionBusy !== null}
+                  onClick={() =>
+                    askConfirm(
+                      `Remover ${c.name}`,
+                      `Tem certeza que deseja remover o container "${c.name}"?`,
+                      () => runContainerAction(c.name, 'rm'),
+                      true
+                    )
+                  }
+                  className="px-3 py-1.5 rounded-xl text-xs font-medium bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)] hover:opacity-90 disabled:opacity-50 ml-auto"
+                >
+                  Remover
+                </button>
               </div>
             </div>
           ))}
@@ -891,933 +1008,489 @@ function HomeView({ apps, selectApp, serverStatus, addToast, fetchStatus, isRunn
   );
 }
 
-// ─── DOCKER VIEW ────────────────────────────────────────────────────────────
-function DockerView({ addToast }) {
-  const [containers, setContainers] = useState([]);
-  const [images, setImages] = useState([]);
-  const [logs, setLogs] = useState('');
-  const [logsContainer, setLogsContainer] = useState('');
-  const [tab, setTab] = useState('containers'); // containers, images, logs
-  const [loading, setLoading] = useState(false);
-  const [filterAll, setFilterAll] = useState(false);
-
-  const fetchContainers = useCallback(async () => {
-    setLoading(true);
-    try {
-      const endpoint = filterAll ? 'all' : 'ps';
-      const data = await apiFetch(`/api/docker/${endpoint}`);
-      if (data.ok) {
-        setContainers(data.containers || []);
-      } else {
-        addToast('Erro ao carregar contêineres.', 'error');
-      }
-    } catch {
-      addToast('Erro de conexão.', 'error');
-    }
-    setLoading(false);
-  }, [filterAll, addToast]);
-
-  const fetchImages = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await apiFetch('/api/docker/images');
-      if (data.ok) {
-        setImages(data.images || []);
-      } else {
-        addToast('Erro ao carregar imagens.', 'error');
-      }
-    } catch {
-      addToast('Erro de conexão.', 'error');
-    }
-    setLoading(false);
-  }, [addToast]);
-
-  useEffect(() => {
-    if (tab === 'containers') fetchContainers();
-    else if (tab === 'images') fetchImages();
-  }, [tab, fetchContainers, fetchImages]);
-
-  const triggerAction = async (action, name) => {
-    if (action === 'rm' && !window.confirm(`Deseja realmente remover o contêiner ${name}?`)) return;
-
-    setLoading(true);
-    try {
-      const data = await apiFetch(`/api/docker/${action}`, {
-        method: 'POST',
-        body: JSON.stringify({ name })
-      });
-      if (data.ok) {
-        addToast('Comando executado.', 'success');
-        fetchContainers();
-      } else {
-        addToast('Falha ao executar comando.', 'error');
-      }
-    } catch {
-      addToast('Erro de rede.', 'error');
-    }
-    setLoading(false);
-  };
-
-  const showLogs = async (name) => {
-    setLogsContainer(name);
-    setTab('logs');
-    setLogs('');
-    setLoading(true);
-    try {
-      const data = await apiFetch(`/api/docker/logs?name=${name}`);
-      if (data.ok) {
-        setLogs(data.output || 'Sem logs.');
-      } else {
-        setLogs(`Erro ao carregar logs: ${data.error}`);
-      }
-    } catch {
-      setLogs('Erro de conexão.');
-    }
-    setLoading(false);
-  };
-
-  const restartDockerService = async () => {
-    if (!window.confirm('Deseja reiniciar o serviço Docker no servidor remoto?')) return;
-    setLoading(true);
-    try {
-      const data = await apiFetch('/api/docker/restart-service', { method: 'POST' });
-      if (data.ok) addToast('Serviço Docker reiniciado!', 'success');
-      else addToast(data.error || 'Falha ao reiniciar.', 'error');
-    } catch {
-      addToast('Erro de rede.', 'error');
-    }
-    setLoading(false);
-  };
-
-  return (
-    <div className="space-y-4">
-      {/* Sub tabs and controls */}
-      <div className="flex items-center justify-between gap-3 bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] p-2.5 rounded-2xl text-xs">
-        <div className="flex gap-1.5">
-          <button 
-            onClick={() => setTab('containers')} 
-            className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${
-              tab === 'containers' 
-                ? 'bg-[var(--md-sys-color-primary)] text-white' 
-                : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
-            }`}
-          >
-            <span className="material-symbols-outlined text-[16px]">view_in_ar</span>
-            <span className="hidden sm:inline">Contêineres</span>
-          </button>
-          <button 
-            onClick={() => setTab('images')} 
-            className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${
-              tab === 'images' 
-                ? 'bg-[var(--md-sys-color-primary)] text-white' 
-                : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
-            }`}
-          >
-            <span className="material-symbols-outlined text-[16px]">image</span>
-            <span className="hidden sm:inline">Imagens</span>
-          </button>
-          {logsContainer && (
-            <button 
-              onClick={() => setTab('logs')} 
-              className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${
-                tab === 'logs' 
-                  ? 'bg-[var(--md-sys-color-primary)] text-white' 
-                  : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
-              }`}
-            >
-              <span className="material-symbols-outlined text-[16px]">notes</span>
-              <span className="hidden sm:inline">Logs: {logsContainer}</span>
-            </button>
-          )}
-        </div>
-
-        <div className="flex items-center gap-3">
-          {tab === 'containers' && (
-            <label className="flex items-center gap-1.5 cursor-pointer text-[var(--md-sys-color-on-surface-variant)] select-none text-[11px]">
-              <input 
-                type="checkbox" 
-                checked={filterAll} 
-                onChange={(e) => setFilterAll(e.target.checked)} 
-                className="w-3.5 h-3.5 rounded accent-[var(--md-sys-color-primary)]"
-              />
-              <span>Todos (-a)</span>
-            </label>
-          )}
-          <button onClick={restartDockerService} disabled={loading} title="Reiniciar Serviço Docker" className="w-8 h-8 rounded-lg border border-[var(--md-sys-color-error)]/20 hover:bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-error)] flex items-center justify-center">
-            <span className="material-symbols-outlined text-base">restart_alt</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Main Content Area */}
-      <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] rounded-2xl overflow-hidden min-h-[250px] flex flex-col">
-        {loading && (
-          <div className="p-8 text-center text-xs text-[var(--md-sys-color-on-surface-variant)] flex items-center justify-center gap-2 flex-1">
-            <span className="animate-spin material-symbols-outlined text-base">autorenew</span>
-            <span>Carregando...</span>
-          </div>
-        )}
-
-        {!loading && tab === 'containers' && (
-          containers.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-[var(--md-sys-color-surface-variant)]/50 border-b border-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)]">
-                    <th className="text-left py-2.5 px-4 font-semibold">Nome</th>
-                    <th className="text-left py-2.5 px-4 font-semibold">Status</th>
-                    <th className="text-left py-2.5 px-4 font-semibold hidden lg:table-cell">Portas</th>
-                    <th className="text-right py-2.5 px-4 font-semibold">Ações</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--md-sys-color-surface-variant)]">
-                  {containers.map((c, idx) => {
-                    const active = c.Status?.includes('Up');
-                    return (
-                      <tr key={idx} className="hover:bg-[var(--md-sys-color-surface-variant)]/30 transition-colors">
-                        <td className="py-2.5 px-4 font-mono truncate max-w-[150px]">{c.Names}</td>
-                        <td className="py-2.5 px-4">
-                          <span className={active ? 'text-[var(--md-sys-color-tertiary)] font-medium' : 'text-[var(--md-sys-color-error)] font-medium'}>
-                            {active ? 'Ativo' : 'Parado'}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-4 hidden lg:table-cell font-mono text-[10px] text-[var(--md-sys-color-on-surface-variant)] max-w-[200px] truncate">{c.Ports || '—'}</td>
-                        <td className="py-2.5 px-4 text-right space-x-0.5 whitespace-nowrap">
-                          {!active ? (
-                            <button onClick={() => triggerAction('start', c.Names)} title="Iniciar" className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-primary)]">
-                              <span className="material-symbols-outlined text-[16px]">play_arrow</span>
-                            </button>
-                          ) : (
-                            <button onClick={() => triggerAction('stop', c.Names)} title="Parar" className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-error)]">
-                              <span className="material-symbols-outlined text-[16px]">stop</span>
-                            </button>
-                          )}
-                          <button onClick={() => triggerAction('restart', c.Names)} title="Reiniciar" className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-warning)]">
-                            <span className="material-symbols-outlined text-[16px]">autorenew</span>
-                          </button>
-                          <button onClick={() => showLogs(c.Names)} title="Logs" className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)]">
-                            <span className="material-symbols-outlined text-[16px]">notes</span>
-                          </button>
-                          <button onClick={() => triggerAction('rm', c.Names)} title="Remover" className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-error)]">
-                            <span className="material-symbols-outlined text-[16px]">delete</span>
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="p-8 text-center text-xs text-[var(--md-sys-color-on-surface-variant)] flex-1 flex items-center justify-center">Nenhum contêiner.</div>
-          )
-        )}
-
-        {!loading && tab === 'images' && (
-          images.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-[var(--md-sys-color-surface-variant)]/50 border-b border-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)]">
-                    <th className="text-left py-2.5 px-4 font-semibold">Repository</th>
-                    <th className="text-left py-2.5 px-4 font-semibold">Tag</th>
-                    <th className="text-left py-2.5 px-4 font-semibold">Size</th>
-                    <th className="text-left py-2.5 px-4 font-semibold">ID</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--md-sys-color-surface-variant)]">
-                  {images.map((img, idx) => (
-                    <tr key={idx} className="hover:bg-[var(--md-sys-color-surface-variant)]/30 transition-colors">
-                      <td className="py-2 px-4 font-mono">{img.Repository}</td>
-                      <td className="py-2 px-4 font-mono text-[var(--md-sys-color-on-surface-variant)]">{img.Tag}</td>
-                      <td className="py-2 px-4 font-mono text-[var(--md-sys-color-on-surface-variant)]">{img.Size}</td>
-                      <td className="py-2 px-4 font-mono text-[10px] text-[var(--md-sys-color-on-surface-variant)]">{img.ID?.substring(0, 12)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="p-8 text-center text-xs text-[var(--md-sys-color-on-surface-variant)] flex-1 flex items-center justify-center">Nenhuma imagem.</div>
-          )
-        )}
-
-        {!loading && tab === 'logs' && (
-          <div className="flex-1 flex flex-col p-3 bg-black text-green-400 font-mono text-xs overflow-hidden h-[350px]">
-            <div className="flex items-center justify-between border-b border-gray-800 pb-1.5 mb-2 text-[10px]">
-              <span className="truncate">Logs: {logsContainer}</span>
-              <button onClick={() => showLogs(logsContainer)} className="hover:text-white flex items-center gap-1">
-                <span className="material-symbols-outlined text-[12px]">refresh</span>
-                <span>Recarregar</span>
-              </button>
-            </div>
-            <pre className="flex-1 overflow-auto whitespace-pre-wrap">{logs || 'Aguardando logs...'}</pre>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── IA HUB VIEW ────────────────────────────────────────────────────────────
-function IaHubView({ addToast }) {
-  const [subTab, setSubTab] = useState('chat'); // chat, agent, manage
-  const [models, setModels] = useState([]);
-  const [modelsLoading, setModelsLoading] = useState(false);
-  const [chatModel, setChatModel] = useState('');
-  
-  // Chat States
-  const [messages, setMessages] = useState([]);
-  const [chatInput, setChatInput] = useState('');
-  const [chatLoading, setChatLoading] = useState(false);
-  const chatEndRef = useRef(null);
-
-  // Agent States
-  const [agentPrompt, setAgentPrompt] = useState('');
-  const [agentEngine, setAgentEngine] = useState('antigravity'); // antigravity, crewai, gemma4, interpreter
-  const [agentMode, setAgentMode] = useState('autonomous'); // safe, autonomous
+/* ============================================================================
+ * 3. AUTOMAÇÃO & MODELOS LLM (NOMES TÉCNICOS E GENÉRICOS)
+ * ============================================================================ */
+function AutomationView({ apiFetch, showOutput }) {
+  const [engine, setEngine] = useState('cli-agent');
+  const [mode, setMode] = useState('autonomous');
+  const [prompt, setPrompt] = useState('');
   const [agentOutput, setAgentOutput] = useState('');
-  const [agentLoading, setAgentLoading] = useState(false);
+  const [agentBusy, setAgentBusy] = useState(false);
 
-  // Manage States
-  const [ollamaStatus, setOllamaStatus] = useState('');
-  const [statusLoading, setStatusLoading] = useState(false);
+  // Modelos e Chat
+  const [models, setModels] = useState([]);
+  const [selectedModel, setSelectedModel] = useState('');
+  const [chatInput, setChatInput] = useState('');
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatBusy, setChatBusy] = useState(false);
   const [pullModelName, setPullModelName] = useState('');
-  const [pullLoading, setPullLoading] = useState(false);
+  const [pullBusy, setPullBusy] = useState(false);
 
-  const fetchModels = useCallback(async () => {
-    setModelsLoading(true);
+  const loadModels = useCallback(async () => {
     try {
       const data = await apiFetch('/api/ia/models');
-      if (data.ok) {
-        const lines = (data.output || '').split('\n').map(l => l.trim()).filter(Boolean);
-        const parsed = [];
-        for (let i = 1; i < lines.length; i++) {
-          const parts = lines[i].split(/\s{2,}/);
-          if (parts.length >= 3) {
-            parsed.push({ name: parts[0], id: parts[1], size: parts[2] });
-          }
+      const lines = (data.output || '').split('\n').map((l) => l.trim()).filter(Boolean);
+      const parsed = [];
+      for (const line of lines.slice(1)) {
+        const parts = line.split(/\s+/);
+        if (parts[0]) {
+          parsed.push({ name: parts[0], provider: 'ollama', size: parts[2] || 'Local' });
         }
-        if (data.gatewayModels && Array.isArray(data.gatewayModels)) {
-          parsed.push(...data.gatewayModels);
-        }
-        setModels(parsed);
-        if (parsed.length > 0 && !chatModel) {
-          setChatModel(parsed[0].name);
-        }
-      } else {
-        addToast(data.error || 'Erro ao carregar modelos da IA.', 'error');
       }
-    } catch {
-      addToast('Erro de rede ao carregar modelos da IA.', 'error');
-    }
-    setModelsLoading(false);
-  }, [chatModel, addToast]);
-
-  const fetchStatus = useCallback(async () => {
-    setStatusLoading(true);
-    try {
-      const data = await apiFetch('/api/ia/status');
-      setOllamaStatus(data.output || 'Sem status.');
-    } catch {
-      setOllamaStatus('Erro ao conectar.');
-    }
-    setStatusLoading(false);
-  }, []);
+      if (Array.isArray(data.gatewayModels)) {
+        for (const gm of data.gatewayModels) {
+          parsed.push({ name: gm.name, provider: 'gateway', size: gm.size || 'Cloud' });
+        }
+      }
+      setModels(parsed);
+      if (parsed.length > 0 && !selectedModel) {
+        setSelectedModel(parsed[0].name);
+      }
+    } catch (_) {}
+  }, [apiFetch, selectedModel]);
 
   useEffect(() => {
-    fetchModels();
-  }, [fetchModels]);
+    loadModels();
+  }, [loadModels]);
 
-  useEffect(() => {
-    if (subTab === 'manage') {
-      fetchStatus();
-    }
-  }, [subTab, fetchStatus]);
-
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, chatLoading]);
-
-  const sendChatMessage = async (e) => {
+  const handleRunAgent = async (e) => {
     e.preventDefault();
-    if (!chatInput.trim() || !chatModel || chatLoading) return;
+    if (!prompt.trim()) return;
+    setAgentBusy(true);
+    setAgentOutput('Executando tarefa no servidor...');
+    try {
+      const res = await apiFetch('/api/ia/agent', {
+        method: 'POST',
+        body: JSON.stringify({ engine, mode, prompt }),
+      });
+      setAgentOutput(res.output || 'Execução concluída.');
+    } catch (err) {
+      setAgentOutput(`Erro: ${err.message}`);
+    } finally {
+      setAgentBusy(false);
+    }
+  };
 
-    const userMsg = { role: 'user', content: chatInput };
-    setMessages(prev => [...prev, userMsg]);
+  const handleSendChat = async (e) => {
+    e.preventDefault();
+    if (!chatInput.trim() || !selectedModel) return;
+    const nextUserMsg = { role: 'user', content: chatInput.trim() };
+    const updatedMessages = [...chatMessages, nextUserMsg];
+    setChatMessages(updatedMessages);
     setChatInput('');
-    setChatLoading(true);
+    setChatBusy(true);
 
     try {
-      const requestMsgs = [...messages, userMsg];
-      const data = await apiFetch('/api/ia/chat', {
+      const modelObj = models.find((m) => m.name === selectedModel);
+      const res = await apiFetch('/api/ia/chat', {
         method: 'POST',
-        body: JSON.stringify({ model: chatModel, messages: requestMsgs })
+        body: JSON.stringify({
+          model: selectedModel,
+          provider: modelObj?.provider || 'ollama',
+          messages: updatedMessages,
+        }),
       });
-
-      if (data.ok && data.message) {
-        setMessages(prev => [...prev, data.message]);
-      } else {
-        addToast('Erro na IA.', 'error');
+      if (res.message) {
+        setChatMessages((prev) => [...prev, res.message]);
       }
-    } catch {
-      addToast('Erro ao se conectar.', 'error');
+    } catch (err) {
+      setChatMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: `Erro ao consultar modelo: ${err.message}` },
+      ]);
+    } finally {
+      setChatBusy(false);
     }
-    setChatLoading(false);
   };
 
-  const triggerAgent = async (e) => {
+  const handlePullModel = async (e) => {
     e.preventDefault();
-    if (!agentPrompt.trim() || agentLoading) return;
-
-    setAgentLoading(true);
-    setAgentOutput('');
+    if (!pullModelName.trim()) return;
+    setPullBusy(true);
     try {
-      const data = await apiFetch('/api/ia/agent', {
+      const res = await apiFetch('/api/ia/pull', {
         method: 'POST',
-        body: JSON.stringify({ prompt: agentPrompt, mode: agentMode, engine: agentEngine })
+        body: JSON.stringify({ model: pullModelName.trim() }),
       });
-      if (data.ok) {
-        setAgentOutput(data.output || 'Concluído.');
-        addToast('Agente concluído.', 'success');
-      } else {
-        setAgentOutput(`Erro: ${data.error}`);
-        addToast('Falha no agente.', 'error');
-      }
-    } catch {
-      addToast('Erro de rede.', 'error');
+      setPullModelName('');
+      await loadModels();
+      showOutput('Download de Modelo', res.output || res.message, false);
+    } catch (err) {
+      showOutput('Erro ao baixar modelo', err.message, false);
+    } finally {
+      setPullBusy(false);
     }
-    setAgentLoading(false);
   };
 
-  const startPull = async (e) => {
-    e.preventDefault();
-    if (!pullModelName.trim() || pullLoading) return;
-
-    setPullLoading(true);
+  const handleRemoveModel = async (modelName) => {
     try {
-      const data = await apiFetch('/api/ia/pull', {
+      const res = await apiFetch('/api/ia/remove', {
         method: 'POST',
-        body: JSON.stringify({ model: pullModelName })
+        body: JSON.stringify({ model: modelName }),
       });
-      if (data.ok) {
-        addToast(`Modelo ${pullModelName} baixado!`, 'success');
-        setPullModelName('');
-        fetchModels();
-      } else {
-        addToast('Erro no download.', 'error');
-      }
-    } catch {
-      addToast('Erro de conexão.', 'error');
+      await loadModels();
+      showOutput('Modelo Removido', res.output || res.message, false);
+    } catch (err) {
+      showOutput('Erro ao remover modelo', err.message, false);
     }
-    setPullLoading(false);
   };
 
-  const removeModel = async (name) => {
-    if (name.includes('/')) {
-      addToast('Modelos de nuvem (Vercel AI Gateway) são integrados e não podem ser removidos.', 'info');
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Executor de Agente Técnico CLI */}
+      <div className="bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] rounded-2xl p-5 space-y-4">
+        <div>
+          <h2 className="text-sm font-bold">Executor de Agente de Automação</h2>
+          <p className="text-xs text-[var(--md-sys-color-on-surface-variant)]">
+            Execução direta de instruções técnicas no host remoto
+          </p>
+        </div>
+
+        <form onSubmit={handleRunAgent} className="space-y-3 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[11px] font-medium text-[var(--md-sys-color-on-surface-variant)] mb-1">
+                Motor de Execução
+              </label>
+              <select
+                value={engine}
+                onChange={(e) => setEngine(e.target.value)}
+                className="w-full bg-[var(--md-sys-color-surface-variant)] rounded-xl px-3 py-2 outline-none"
+              >
+                <option value="cli-agent">Agente CLI Principal (agy)</option>
+                <option value="multi-agent">Orquestrador Multi-Agente</option>
+                <option value="local-llm">Inferência Local (Ollama API)</option>
+                <option value="shell-interpreter">Interpretador de Shell</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-[var(--md-sys-color-on-surface-variant)] mb-1">
+                Modo de Permissão
+              </label>
+              <select
+                value={mode}
+                onChange={(e) => setMode(e.target.value)}
+                className="w-full bg-[var(--md-sys-color-surface-variant)] rounded-xl px-3 py-2 outline-none"
+              >
+                <option value="autonomous">Autônomo (Aceitar Edições)</option>
+                <option value="supervised">Somente Consulta</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-medium text-[var(--md-sys-color-on-surface-variant)] mb-1">
+              Instrução Técnica
+            </label>
+            <textarea
+              rows={3}
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Descreva a verificação, diagnóstico ou tarefa a executar no servidor..."
+              className="w-full bg-[var(--md-sys-color-surface-variant)] rounded-xl p-3 outline-none resize-y"
+              required
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={agentBusy || !prompt.trim()}
+            className="w-full py-2.5 px-4 rounded-xl font-medium bg-[var(--md-sys-color-primary)] text-white hover:opacity-90 disabled:opacity-50"
+          >
+            {agentBusy ? 'Processando no Servidor...' : 'Executar Instrução'}
+          </button>
+        </form>
+
+        {agentOutput && (
+          <div className="bg-[var(--md-sys-color-background)] border border-[var(--md-sys-color-surface-variant)] rounded-xl p-3.5 font-mono text-xs whitespace-pre-wrap max-h-72 overflow-y-auto">
+            {agentOutput}
+          </div>
+        )}
+      </div>
+
+      {/* Console de Chat e Gerenciamento de Modelos */}
+      <div className="space-y-6">
+        <div className="bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] rounded-2xl p-5 space-y-4">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-bold">Console de Inferência LLM</h2>
+              <p className="text-xs text-[var(--md-sys-color-on-surface-variant)]">
+                Comunicação direta com modelos locais ou gateway
+              </p>
+            </div>
+            {chatMessages.length > 0 && (
+              <button
+                onClick={() => setChatMessages([])}
+                className="px-2.5 py-1 rounded-lg text-xs bg-[var(--md-sys-color-surface-variant)]"
+              >
+                Limpar
+              </button>
+            )}
+          </div>
+
+          <select
+            value={selectedModel}
+            onChange={(e) => setSelectedModel(e.target.value)}
+            className="w-full bg-[var(--md-sys-color-surface-variant)] text-xs rounded-xl px-3 py-2 outline-none"
+          >
+            {models.map((m) => (
+              <option key={m.name} value={m.name}>
+                {m.name} ({m.size})
+              </option>
+            ))}
+          </select>
+
+          <div className="bg-[var(--md-sys-color-background)] border border-[var(--md-sys-color-surface-variant)] rounded-xl p-3 h-56 overflow-y-auto space-y-2.5 text-xs">
+            {chatMessages.length === 0 ? (
+              <p className="text-[var(--md-sys-color-on-surface-variant)] text-center py-16">
+                Envie uma mensagem para testar ou consultar o modelo selecionado.
+              </p>
+            ) : (
+              chatMessages.map((m, idx) => (
+                <div
+                  key={idx}
+                  className={`p-2.5 rounded-xl ${
+                    m.role === 'user'
+                      ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] ml-6'
+                      : 'bg-[var(--md-sys-color-surface-variant)] mr-6'
+                  }`}
+                >
+                  <div className="text-[10px] font-bold uppercase opacity-70 mb-1">
+                    {m.role === 'user' ? 'Operador' : selectedModel}
+                  </div>
+                  <div className="whitespace-pre-wrap">{m.content}</div>
+                </div>
+              ))
+            )}
+          </div>
+
+          <form onSubmit={handleSendChat} className="flex gap-2">
+            <input
+              type="text"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              placeholder="Digite sua consulta técnica..."
+              className="flex-1 bg-[var(--md-sys-color-surface-variant)] text-xs rounded-xl px-3.5 py-2.5 outline-none"
+            />
+            <button
+              type="submit"
+              disabled={chatBusy || !chatInput.trim()}
+              className="px-4 py-2.5 rounded-xl text-xs font-medium bg-[var(--md-sys-color-primary)] text-white hover:opacity-90 disabled:opacity-50"
+            >
+              {chatBusy ? '...' : 'Enviar'}
+            </button>
+          </form>
+        </div>
+
+        {/* Gerenciamento de Modelos Locais Ollama */}
+        <div className="bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] rounded-2xl p-5 space-y-3">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--md-sys-color-on-surface-variant)]">
+            Modelos Locais Instalados (Ollama)
+          </h3>
+
+          <form onSubmit={handlePullModel} className="flex gap-2">
+            <input
+              type="text"
+              value={pullModelName}
+              onChange={(e) => setPullModelName(e.target.value)}
+              placeholder="Instalar modelo (ex: gemma4:latest, qwen2.5-coder:7b)"
+              className="flex-1 bg-[var(--md-sys-color-surface-variant)] text-xs rounded-xl px-3.5 py-2 outline-none"
+            />
+            <button
+              type="submit"
+              disabled={pullBusy || !pullModelName.trim()}
+              className="px-3.5 py-2 rounded-xl text-xs font-medium bg-[var(--md-sys-color-primary)] text-white disabled:opacity-50"
+            >
+              {pullBusy ? 'Baixando...' : 'Baixar'}
+            </button>
+          </form>
+
+          <div className="divide-y divide-[var(--md-sys-color-surface-variant)] text-xs">
+            {models
+              .filter((m) => m.provider === 'ollama')
+              .map((m) => (
+                <div key={m.name} className="py-2 flex items-center justify-between">
+                  <span className="font-mono">{m.name}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-[var(--md-sys-color-on-surface-variant)]">
+                      {m.size}
+                    </span>
+                    <button
+                      onClick={() => handleRemoveModel(m.name)}
+                      className="px-2 py-1 rounded text-[11px] bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)]"
+                    >
+                      Remover
+                    </button>
+                  </div>
+                </div>
+              ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================================
+ * 4. TERMINAL SSH DIRETO VIA HTTPS (ESTADO ISOLADO POR DISPOSITIVO)
+ * ============================================================================ */
+function TerminalView({ apiFetch, openModule, deviceId }) {
+  const storageKeyCwd = `srv-term-cwd-${deviceId || 'default'}`;
+  const [cwd, setCwd] = useState('~');
+  const [command, setCommand] = useState('');
+  const [history, setHistory] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const bottomRef = useRef(null);
+
+  useEffect(() => {
+    const saved = localStorage.getItem(storageKeyCwd);
+    if (saved) setCwd(saved);
+  }, [storageKeyCwd]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [history]);
+
+  const executeCommand = async (cmdToRun) => {
+    const clean = cmdToRun.trim();
+    if (!clean) return;
+    if (clean === 'clear') {
+      setHistory([]);
+      setCommand('');
       return;
     }
-    if (!window.confirm(`Deseja realmente remover o modelo ${name}?`)) return;
+
+    setBusy(true);
+    setCommand('');
+    const entryId = Date.now();
+    setHistory((prev) => [...prev, { id: entryId, cwd, command: clean, output: 'Executando...', exitCode: null }]);
 
     try {
-      const data = await apiFetch('/api/ia/remove', {
+      const res = await apiFetch('/api/terminal/exec', {
         method: 'POST',
-        body: JSON.stringify({ model: name })
+        body: JSON.stringify({ command: clean, cwd }),
       });
-      if (data.ok) {
-        addToast(`Modelo ${name} removido!`, 'success');
-        fetchModels();
-      } else {
-        addToast('Erro ao remover.', 'error');
-      }
-    } catch {
-      addToast('Erro de rede.', 'error');
+      const nextCwd = res.cwd || cwd;
+      setCwd(nextCwd);
+      localStorage.setItem(storageKeyCwd, nextCwd);
+      setHistory((prev) =>
+        prev.map((item) =>
+          item.id === entryId
+            ? { ...item, output: res.output, cwd: nextCwd, exitCode: res.exitCode }
+            : item
+        )
+      );
+    } catch (err) {
+      setHistory((prev) =>
+        prev.map((item) =>
+          item.id === entryId
+            ? { ...item, output: `Erro: ${err.message}`, exitCode: 1 }
+            : item
+        )
+      );
+    } finally {
+      setBusy(false);
     }
   };
+
+  const QUICK_COMMANDS = [
+    { label: 'Status Docker', cmd: 'sudo docker ps --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}"' },
+    { label: 'Uso de Disco', cmd: 'df -h' },
+    { label: 'Memória RAM', cmd: 'free -h' },
+    { label: 'Portas Ativas', cmd: 'ss -tlnp' },
+    { label: 'Últimos Logs Auditoria', cmd: 'tail -n 20 ~/dashboard-audit.log' },
+  ];
 
   return (
     <div className="space-y-4">
-      {/* Sub tabs */}
-      <div className="flex bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] p-2 rounded-2xl text-xs gap-1.5">
-        <button onClick={() => setSubTab('chat')} className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${subTab === 'chat' ? 'bg-[var(--md-sys-color-primary)] text-white' : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'}`}>
-          <span className="material-symbols-outlined text-[16px]">forum</span>
-          <span>Conversar</span>
-        </button>
-        <button onClick={() => setSubTab('agent')} className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${subTab === 'agent' ? 'bg-[var(--md-sys-color-primary)] text-white' : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'}`}>
-          <span className="material-symbols-outlined text-[16px]">smart_toy</span>
-          <span>Agente</span>
-        </button>
-        <button onClick={() => setSubTab('manage')} className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${subTab === 'manage' ? 'bg-[var(--md-sys-color-primary)] text-white' : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'}`}>
-          <span className="material-symbols-outlined text-[16px]">settings</span>
-          <span>Gerenciar</span>
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-2 bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] rounded-2xl p-4">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {QUICK_COMMANDS.map((q) => (
+            <button
+              key={q.label}
+              disabled={busy}
+              onClick={() => executeCommand(q.cmd)}
+              className="px-2.5 py-1.5 rounded-xl text-xs font-mono bg-[var(--md-sys-color-surface-variant)] hover:opacity-90 disabled:opacity-50"
+            >
+              {q.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setHistory([])}
+            className="px-3 py-1.5 rounded-xl text-xs bg-[var(--md-sys-color-surface-variant)]"
+          >
+            Limpar Console
+          </button>
+          <button
+            onClick={() =>
+              openModule({
+                name: 'Terminal Web (TTY)',
+                port: 7682,
+                protocol: 'http:',
+                sandboxRoute: '/api/sandbox/terminal',
+              })
+            }
+            className="px-3 py-1.5 rounded-xl text-xs font-medium bg-[var(--md-sys-color-primary)] text-white"
+          >
+            Abrir TTY Interativo (:7682)
+          </button>
+        </div>
       </div>
 
-      <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] rounded-2xl p-4 min-h-[300px] flex flex-col justify-between text-xs">
-        {/* CHAT HUB */}
-        {subTab === 'chat' && (
-          <div className="flex-1 flex flex-col h-[400px]">
-            {/* Top Selector */}
-            <div className="flex items-center justify-between pb-3 border-b border-[var(--md-sys-color-surface-variant)] mb-3 text-xs">
-              <span className="font-semibold text-[var(--md-sys-color-on-surface-variant)] flex items-center gap-1">
-                <span className="material-symbols-outlined text-sm">psychology</span>
-                Modelo
-              </span>
-              <select 
-                value={chatModel} 
-                onChange={(e) => setChatModel(e.target.value)}
-                className="bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-2.5 py-1 outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] font-medium text-[11px]"
-              >
-                {models.length > 0 ? (
-                  models.map((m, idx) => (
-                    <option key={idx} value={m.name}>{m.name}</option>
-                  ))
-                ) : (
-                  <option value="">Sem modelos</option>
-                )}
-              </select>
+      <div className="bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] rounded-2xl overflow-hidden flex flex-col h-[62vh]">
+        <div className="px-4 py-2 border-b border-[var(--md-sys-color-surface-variant)] text-xs font-mono text-[var(--md-sys-color-on-surface-variant)] flex items-center justify-between">
+          <span>Diretório atual neste dispositivo: {cwd}</span>
+          <span>SSH HTTPS Exec</span>
+        </div>
+
+        <div className="flex-1 p-4 font-mono text-xs overflow-y-auto space-y-3 bg-[var(--md-sys-color-background)]">
+          {history.length === 0 ? (
+            <div className="text-[var(--md-sys-color-on-surface-variant)]">
+              Digite qualquer comando Linux abaixo. Cada dispositivo mantém seu próprio diretório de trabalho (cwd) e histórico.
             </div>
-
-            {/* Chat Messages */}
-            <div className="flex-1 overflow-y-auto space-y-3 pb-3 pr-1 text-xs">
-              {messages.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)] opacity-60">
-                  Envie uma mensagem.
+          ) : (
+            history.map((item) => (
+              <div key={item.id} className="space-y-1">
+                <div className="text-[var(--md-sys-color-primary)] font-semibold">
+                  [{item.cwd}]$ {item.command}
                 </div>
-              ) : (
-                messages.map((m, idx) => (
-                  <div key={idx} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] p-3 rounded-2xl border ${
-                      m.role === 'user' 
-                        ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] border-[var(--md-sys-color-primary)]/10 rounded-br-none' 
-                        : 'bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] border-transparent rounded-bl-none'
-                    }`}>
-                      <div className="whitespace-pre-wrap">{m.content}</div>
-                    </div>
-                  </div>
-                ))
-              )}
-              {chatLoading && (
-                <div className="flex justify-start">
-                  <div className="p-3 rounded-2xl bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] border-transparent rounded-bl-none flex items-center gap-1.5">
-                    <span className="material-symbols-outlined animate-spin text-sm">autorenew</span>
-                  </div>
-                </div>
-              )}
-              <div ref={chatEndRef} />
-            </div>
-
-            {/* Input Form */}
-            <form onSubmit={sendChatMessage} className="flex gap-2 pt-3 border-t border-[var(--md-sys-color-surface-variant)]">
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                placeholder="Sua mensagem..."
-                disabled={chatLoading || !chatModel}
-                className="flex-1 bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3.5 py-2 text-xs outline-none border border-transparent focus:border-[var(--md-sys-color-primary)]"
-              />
-              <button 
-                type="submit" 
-                disabled={chatLoading || !chatInput.trim() || !chatModel}
-                className="btn-primary w-9 h-9 rounded-xl flex items-center justify-center disabled:opacity-50 flex-shrink-0"
-              >
-                <span className="material-symbols-outlined text-sm">send</span>
-              </button>
-            </form>
-          </div>
-        )}
-
-        {/* AGENT HUB */}
-        {subTab === 'agent' && (
-          <div className="flex-1 flex flex-col h-[400px]">
-            <form onSubmit={triggerAgent} className="flex flex-col sm:flex-row gap-2">
-              <input
-                type="text"
-                value={agentPrompt}
-                onChange={(e) => setAgentPrompt(e.target.value)}
-                placeholder="Missão para o agente (ex: diagnostique o uso de RAM e containers ativos)..."
-                className="flex-1 bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3.5 py-2 text-xs outline-none border border-transparent focus:border-[var(--md-sys-color-primary)]"
-                disabled={agentLoading}
-              />
-              <div className="flex flex-wrap gap-2">
-                <select
-                  value={agentEngine}
-                  onChange={(e) => setAgentEngine(e.target.value)}
-                  className="bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-2.5 py-2 outline-none text-[11px] font-medium"
-                >
-                  <option value="antigravity">Antigravity (Gemini 4 Argon)</option>
-                  <option value="gemma4">Gemma 4 (Ollama Servidor)</option>
-                  <option value="crewai">CrewAI (Software House)</option>
-                  <option value="interpreter">Open Interpreter</option>
-                </select>
-                <select 
-                  value={agentMode} 
-                  onChange={(e) => setAgentMode(e.target.value)}
-                  className="bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-2 py-2 outline-none text-[11px] font-medium"
-                >
-                  <option value="autonomous">Autônomo</option>
-                  <option value="safe">Seguro</option>
-                </select>
-                <button type="submit" disabled={agentLoading || !agentPrompt.trim()} className="btn-primary px-4 py-2 rounded-xl font-bold flex items-center gap-1">
-                  <span className="material-symbols-outlined text-sm">{agentLoading ? 'autorenew' : 'play_arrow'}</span>
-                  <span>{agentLoading ? 'Rodando...' : 'Executar'}</span>
-                </button>
-              </div>
-            </form>
-
-            <div className="flex-1 mt-4 flex flex-col bg-black text-green-400 font-mono text-[11px] p-3 rounded-xl overflow-hidden">
-              <pre className="flex-1 overflow-auto whitespace-pre-wrap">{agentOutput || 'Console do Agente (Antigravity + Gemma 4 + CrewAI)...'}</pre>
-            </div>
-          </div>
-        )}
-
-        {/* MANAGE HUB */}
-        {subTab === 'manage' && (
-          <div className="flex-1 space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* Models List */}
-              <div className="space-y-2">
-                <div className="border border-[var(--md-sys-color-surface-variant)] rounded-2xl overflow-hidden bg-[var(--md-sys-color-surface-variant)]/10">
-                  {modelsLoading ? (
-                    <div className="p-6 text-center">Carregando...</div>
-                  ) : models.length > 0 ? (
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="bg-[var(--md-sys-color-surface-variant)] border-b border-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)]">
-                          <th className="text-left py-2 px-3 font-semibold">Modelo</th>
-                          <th className="text-left py-2 px-3 font-semibold">Tamanho</th>
-                          <th className="text-right py-2 px-3 font-semibold">Ação</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[var(--md-sys-color-surface-variant)]">
-                        {models.map((m, idx) => (
-                          <tr key={idx} className="hover:bg-[var(--md-sys-color-surface-variant)]/30 transition-colors">
-                            <td className="py-2 px-3 font-mono font-medium">{m.name}</td>
-                            <td className="py-2 px-3 font-mono text-[var(--md-sys-color-on-surface-variant)]">{m.size}</td>
-                            <td className="py-2 px-3 text-right">
-                              {m.name.includes('/') ? (
-                                <span className="inline-block px-2 py-0.5 text-[10px] rounded-full bg-[var(--md-sys-color-primary)]/10 text-[var(--md-sys-color-primary)] font-semibold">
-                                  Vercel AI
-                                </span>
-                              ) : (
-                                <button onClick={() => removeModel(m.name)} title="Remover" className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-error)]">
-                                  <span className="material-symbols-outlined text-[16px]">delete</span>
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  ) : (
-                    <div className="p-6 text-center">Sem modelos instalados.</div>
-                  )}
-                </div>
-              </div>
-
-              {/* Download & Status */}
-              <div className="space-y-4">
-                {/* Download Form */}
-                <form onSubmit={startPull} className="flex gap-2">
-                  <input
-                    type="text"
-                    value={pullModelName}
-                    onChange={(e) => setPullModelName(e.target.value)}
-                    placeholder="deepseek-r1:8b"
-                    disabled={pullLoading}
-                    className="flex-1 bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3 py-2 outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] text-xs"
-                  />
-                  <button type="submit" disabled={pullLoading || !pullModelName.trim()} className="btn-primary px-4 py-2 rounded-xl font-bold flex items-center gap-1.5 flex-shrink-0">
-                    <span className="material-symbols-outlined text-sm">download</span>
-                    <span>Baixar</span>
-                  </button>
-                </form>
-
-                {/* Status Box */}
-                <pre className="p-3 bg-black text-green-400 font-mono text-[10px] rounded-xl whitespace-pre-wrap overflow-auto max-h-[150px]">
-                  {statusLoading ? 'Status...' : ollamaStatus}
+                <pre className="whitespace-pre-wrap break-words text-[var(--md-sys-color-on-surface)] pl-2 border-l-2 border-[var(--md-sys-color-surface-variant)]">
+                  {item.output}
                 </pre>
               </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── BACKUP VIEW ────────────────────────────────────────────────────────────
-function BackupView({ serverStatus, addToast }) {
-  const [output, setOutput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [photosLoading, setPhotosLoading] = useState(false);
-
-  // Poll status/logs every 3 seconds
-  useEffect(() => {
-    let active = true;
-    const fetchStatus = async () => {
-      try {
-        const data = await apiFetch('/api/backup/status');
-        if (active && data.ok) {
-          setOutput(data.log || '');
-          setLoading(data.running);
-        }
-      } catch (err) {
-        console.error('Failed to fetch backup status:', err);
-      }
-    };
-
-    fetchStatus(); // Fetch immediately on mount
-    const interval = setInterval(fetchStatus, 3000);
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
-  }, []);
-
-  const runBackup = async () => {
-    setOutput('Iniciando backup no servidor...');
-    try {
-      const data = await apiFetch('/api/backup/full', { method: 'POST' });
-      if (data.ok) {
-        addToast(data.message || 'Backup iniciado!', 'success');
-      } else {
-        addToast(data.error || 'Falha ao iniciar o backup.', 'error');
-      }
-    } catch {
-      addToast('Erro ao iniciar o backup.', 'error');
-    }
-  };
-
-  const runPhotosBackup = async () => {
-    setPhotosLoading(true);
-    setOutput('');
-    try {
-      const data = await apiFetch('/api/backup/photos', { method: 'POST' });
-      setOutput(data.output || data.message || 'Concluído.');
-      if (data.ok) {
-        addToast('Sincronização de fotos concluída!', 'success');
-        if (data.url) {
-          window.open(data.url, '_blank');
-        }
-      } else {
-        addToast(data.error || 'Falha na sincronização.', 'error');
-      }
-    } catch {
-      setOutput('Erro de processamento no servidor remoto.');
-      addToast('Erro na sincronização de fotos.', 'error');
-    }
-    setPhotosLoading(false);
-  };
-
-  return (
-    <div className="space-y-4 text-xs">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Backup Geral */}
-        <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-[var(--md-sys-color-primary)]">cloud_sync</span>
-            <span className="font-semibold text-xs">Backup Geral</span>
-          </div>
-          <button onClick={runBackup} disabled={loading || photosLoading} className="btn-primary py-2 px-4 rounded-xl font-bold flex items-center gap-1">
-            {loading ? (
-              <span className="animate-spin material-symbols-outlined text-base">autorenew</span>
-            ) : (
-              <>
-                <span className="material-symbols-outlined text-base">play_arrow</span>
-                <span>Iniciar</span>
-              </>
-            )}
-          </button>
-        </div>
-
-        {/* Google Fotos */}
-        <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-[var(--md-sys-color-primary)]">photo_library</span>
-            <div className="flex flex-col">
-              <span className="font-semibold text-xs">Sincronização Google Fotos</span>
-              <span className="text-[9px] text-gray-500">Requer autenticação via Webtop</span>
-            </div>
-          </div>
-          <button onClick={runPhotosBackup} disabled={loading || photosLoading} className="btn-primary py-2 px-4 rounded-xl font-bold flex items-center gap-1">
-            {photosLoading ? (
-              <span className="animate-spin material-symbols-outlined text-base">autorenew</span>
-            ) : (
-              <>
-                <span className="material-symbols-outlined text-base">sync</span>
-                <span>Sincronizar</span>
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Storage */}
-        {serverStatus?.disks && serverStatus.disks.length > 0 && (
-          <div className="space-y-3">
-            {serverStatus.disks.map((d, idx) => (
-              <div key={idx} className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-3 rounded-2xl space-y-1.5">
-                <div className="flex justify-between font-medium">
-                  <span className="truncate">{d.mount}</span>
-                  <span className="text-[var(--md-sys-color-on-surface-variant)]">{d.used} / {d.total}</span>
-                </div>
-                <div className="w-full bg-[var(--md-sys-color-surface-variant)] h-1 rounded-full overflow-hidden">
-                  <div 
-                    className="bg-[var(--md-sys-color-primary)] h-full transition-all" 
-                    style={{ width: `${d.percent}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Console */}
-        <div className="flex flex-col bg-black text-green-400 p-3 rounded-2xl font-mono text-[11px] min-h-[150px] max-h-[250px] overflow-auto relative">
-          {loading && (
-            <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-black/80 px-2 py-1 rounded-lg border border-green-500/20 text-[10px] animate-pulse">
-              <span className="animate-spin material-symbols-outlined text-[10px]">sync</span>
-              <span>Sincronizando...</span>
-            </div>
+            ))
           )}
-          <pre className="whitespace-pre-wrap">{output || 'Logs do backup...'}</pre>
+          <div ref={bottomRef} />
         </div>
-      </div>
-    </div>
-  );
-}
 
-// ─── USERS VIEW ─────────────────────────────────────────────────────────────
-function UsersView({ addToast }) {
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-
-  const fetchUsers = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await apiFetch('/api/users');
-      if (data.ok) {
-        setUsers(data.users || []);
-      } else {
-        addToast('Erro ao carregar usuários.', 'error');
-      }
-    } catch {
-      addToast('Erro de rede.', 'error');
-    }
-    setLoading(false);
-  }, [addToast]);
-
-  useEffect(() => {
-    fetchUsers();
-  }, [fetchUsers]);
-
-  const addUser = async (e) => {
-    e.preventDefault();
-    if (!username.trim() || !password.trim()) return;
-
-    setLoading(true);
-    try {
-      const data = await apiFetch('/api/users', {
-        method: 'POST',
-        body: JSON.stringify({ username: username.trim(), password: password.trim() })
-      });
-      if (data.ok) {
-        addToast(`Usuário salvo!`, 'success');
-        setUsername('');
-        setPassword('');
-        fetchUsers();
-      } else {
-        addToast(data.error || 'Erro ao salvar.', 'error');
-      }
-    } catch {
-      addToast('Erro de conexão.', 'error');
-    }
-    setLoading(false);
-  };
-
-  const deleteUser = async (name) => {
-    if (name === 'admin') return;
-    if (!window.confirm(`Deseja remover ${name}?`)) return;
-
-    setLoading(true);
-    try {
-      const data = await apiFetch(`/api/users?username=${name}`, {
-        method: 'DELETE'
-      });
-      if (data.ok) {
-        addToast(`Usuário removido!`, 'success');
-        fetchUsers();
-      } else {
-        addToast('Erro ao excluir.', 'error');
-      }
-    } catch {
-      addToast('Erro de conexão.', 'error');
-    }
-    setLoading(false);
-  };
-
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
-      <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] rounded-2xl overflow-hidden">
-        {loading && users.length === 0 ? (
-          <div className="p-6 text-center">Carregando...</div>
-        ) : (
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-[var(--md-sys-color-surface-variant)] border-b border-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)]">
-                <th className="text-left py-2 px-3 font-semibold">Usuário</th>
-                <th className="text-right py-2 px-3 font-semibold">Ação</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--md-sys-color-surface-variant)]">
-              {users.map((u, idx) => (
-                <tr key={idx} className="hover:bg-[var(--md-sys-color-surface-variant)]/30 transition-colors">
-                  <td className="py-2 px-3 font-mono font-medium">{u.username}</td>
-                  <td className="py-2 px-3 text-right">
-                    {u.username !== 'admin' ? (
-                      <button onClick={() => deleteUser(u.username)} className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-error)]">
-                        <span className="material-symbols-outlined text-[16px]">delete</span>
-                      </button>
-                    ) : (
-                      <span className="text-[10px] text-[var(--md-sys-color-on-surface-variant)] italic pr-2 select-none">Mestre</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl">
-        <form onSubmit={addUser} className="space-y-3">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            executeCommand(command);
+          }}
+          className="p-3 border-t border-[var(--md-sys-color-surface-variant)] flex items-center gap-2 bg-[var(--md-sys-color-surface)]"
+        >
+          <span className="font-mono text-xs text-[var(--md-sys-color-primary)] font-bold">
+            $
+          </span>
           <input
             type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="Usuário"
-            disabled={loading}
-            required
-            className="w-full bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3 py-2 outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] text-xs"
+            value={command}
+            onChange={(e) => setCommand(e.target.value)}
+            placeholder="Digite um comando shell (ex: ls -la, docker stats --no-stream, git status)..."
+            className="flex-1 bg-transparent font-mono text-xs outline-none"
+            disabled={busy}
+            autoFocus
           />
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Senha"
-            disabled={loading}
-            required
-            className="w-full bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3 py-2 outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] text-xs"
-          />
-          <button type="submit" disabled={loading} className="w-full btn-primary py-2 px-4 rounded-xl font-bold flex items-center justify-center gap-1.5">
-            <span className="material-symbols-outlined text-sm">save</span>
-            <span>Salvar</span>
+          <button
+            type="submit"
+            disabled={busy || !command.trim()}
+            className="px-4 py-1.5 rounded-xl text-xs font-medium bg-[var(--md-sys-color-primary)] text-white disabled:opacity-50"
+          >
+            {busy ? 'Executando...' : 'Executar'}
           </button>
         </form>
       </div>
@@ -1825,691 +1498,941 @@ function UsersView({ addToast }) {
   );
 }
 
-// ─── MAINTENANCE & CONTROL CENTER VIEW ─────────────────────────────────────
-function MaintenanceView({ serverStatus, addToast, fetchStatus }) {
-  const [subTab, setSubTab] = useState('terminal'); // terminal, system, maintenance
-  const [output, setOutput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [vpnLoading, setVpnLoading] = useState(false);
-  const [vpnStatus, setVpnStatus] = useState('');
+/* ============================================================================
+ * 5. PROCESSOS, SERVIÇOS SYSTEMD & REDE
+ * ============================================================================ */
+function SistemaView({ apiFetch, showOutput, askConfirm, sshOverride, setSshOverride, fetchGlobalStatus }) {
+  const [sysData, setSysData] = useState({
+    processes: [],
+    services: [],
+    listeningPorts: [],
+    activeTunnels: [],
+    host: '',
+    port: 22,
+    route: '',
+  });
+  const [loading, setLoading] = useState(true);
+  const [overrideInput, setOverrideInput] = useState(sshOverride || '');
 
-  // Terminal Direto HTTPS states
-  const [cmdInput, setCmdInput] = useState('');
-  const [cwd, setCwd] = useState('~');
-  const [termHistory, setTermHistory] = useState([]);
-  const [termRunning, setTermRunning] = useState(false);
-  const termEndRef = useRef(null);
-
-  // System Control states (Processes + Systemd Services + Tunnels)
-  const [sysData, setSysData] = useState({ processes: [], services: [], listeningPorts: [], activeTunnels: [] });
-  const [sysLoading, setSysLoading] = useState(false);
-
-  const runDirectCommand = async (customCmd) => {
-    const commandToRun = (typeof customCmd === 'string' ? customCmd : cmdInput).trim();
-    if (!commandToRun || termRunning) return;
-    if (typeof customCmd !== 'string') setCmdInput('');
-
-    setTermRunning(true);
-    setTermHistory((prev) => [...prev, { type: 'cmd', cwd, text: commandToRun }]);
-    try {
-      const data = await apiFetch('/api/terminal/exec', {
-        method: 'POST',
-        body: JSON.stringify({ command: commandToRun, cwd }),
-      });
-      if (data.ok) {
-        if (data.cwd) setCwd(data.cwd);
-        setTermHistory((prev) => [
-          ...prev,
-          {
-            type: 'out',
-            text: data.output,
-            exitCode: data.exitCode,
-            route: data.route ? `${data.host}:${data.port} (${data.route})` : data.host,
-          },
-        ]);
-      } else {
-        setTermHistory((prev) => [...prev, { type: 'err', text: data.error || 'Erro ao executar comando.' }]);
-      }
-    } catch (err) {
-      setTermHistory((prev) => [...prev, { type: 'err', text: err?.message || 'Erro de conexão.' }]);
-    }
-    setTermRunning(false);
-  };
-
-  useEffect(() => {
-    termEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [termHistory, termRunning]);
-
-  const fetchSystemControl = useCallback(async () => {
-    setSysLoading(true);
+  const loadControlData = useCallback(async () => {
+    setLoading(true);
     try {
       const data = await apiFetch('/api/system/control');
-      if (data.ok) {
-        setSysData({
-          processes: data.processes || [],
-          services: data.services || [],
-          listeningPorts: data.listeningPorts || [],
-          activeTunnels: data.activeTunnels || [],
-        });
-      } else {
-        addToast(data.error || 'Erro ao carregar processos e serviços.', 'error');
-      }
-    } catch {
-      addToast('Erro de conexão.', 'error');
-    }
-    setSysLoading(false);
-  }, [addToast]);
-
-  const handleKillProcess = async (pid, comm) => {
-    if (!window.confirm(`Encerrar processo ${comm} (PID ${pid})?`)) return;
-    try {
-      const data = await apiFetch('/api/system/control', {
-        method: 'POST',
-        body: JSON.stringify({ action: 'kill_process', pid }),
+      setSysData({
+        processes: data.processes || [],
+        services: data.services || [],
+        listeningPorts: data.listeningPorts || [],
+        activeTunnels: data.activeTunnels || [],
+        host: data.host || '',
+        port: data.port || 22,
+        route: data.route || '',
       });
-      if (data.ok) {
-        addToast(data.message || `PID ${pid} encerrado.`, 'success');
-        fetchSystemControl();
-      } else {
-        addToast(data.error || 'Falha ao encerrar processo.', 'error');
-      }
-    } catch {
-      addToast('Erro de rede.', 'error');
+    } catch (err) {
+      showOutput('Erro ao carregar controle do sistema', err.message, false);
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [apiFetch, showOutput]);
 
-  const handleServiceAction = async (service, op) => {
-    setSysLoading(true);
+  useEffect(() => {
+    loadControlData();
+  }, [loadControlData]);
+
+  const handleServiceOp = async (service, op) => {
     try {
-      const data = await apiFetch('/api/system/control', {
+      const res = await apiFetch('/api/system/control', {
         method: 'POST',
         body: JSON.stringify({ action: 'service', service, op }),
       });
-      if (data.ok) {
-        addToast(`${service}: ${op} concluído!`, 'success');
-        fetchSystemControl();
-        fetchStatus();
-      } else {
-        addToast(data.error || 'Erro no serviço.', 'error');
-        setSysLoading(false);
-      }
-    } catch {
-      addToast('Erro de rede.', 'error');
-      setSysLoading(false);
+      await loadControlData();
+      showOutput(`Systemd: ${service}`, res.output || res.message, false);
+    } catch (err) {
+      showOutput(`Erro em ${service}`, err.message, false);
     }
   };
 
-  const runMaintenance = async (action, title) => {
-    if (!window.confirm(`Executar: ${title}?`)) return;
-
-    setLoading(true);
-    setOutput('');
-    try {
-      const data = await apiFetch(`/api/maintenance/${action}`, { method: 'POST' });
-      setOutput(data.output || data.message || 'Concluído.');
-      if (data.ok) addToast(`${title} executada!`, 'success');
-      else addToast('Falha ao executar.', 'error');
-    } catch {
-      setOutput('Erro de conexão com o servidor.');
-      addToast('Erro ao realizar manutenção.', 'error');
-    }
-    setLoading(false);
+  const handleKillProcess = (pid, comm) => {
+    askConfirm(
+      `Finalizar Processo PID ${pid}`,
+      `Deseja encerrar o processo "${comm}" (PID ${pid})?`,
+      async () => {
+        try {
+          const res = await apiFetch('/api/system/control', {
+            method: 'POST',
+            body: JSON.stringify({ action: 'kill_process', pid, signal: '9' }),
+          });
+          await loadControlData();
+          showOutput(`Processo ${pid}`, res.output || res.message, false);
+        } catch (err) {
+          showOutput(`Erro ao finalizar PID ${pid}`, err.message, false);
+        }
+      },
+      true
+    );
   };
 
-  const getVpnStatus = useCallback(async () => {
-    setVpnLoading(true);
-    try {
-      const data = await apiFetch('/api/vpn/status');
-      setVpnStatus(data.output || 'Não foi possível obter status.');
-    } catch {
-      setVpnStatus('Erro ao conectar.');
+  const handleSaveOverride = (e) => {
+    e.preventDefault();
+    const clean = overrideInput.trim();
+    setSshOverride(clean);
+    if (clean) {
+      localStorage.setItem('srv-ssh-override', clean);
+    } else {
+      localStorage.removeItem('srv-ssh-override');
     }
-    setVpnLoading(false);
-  }, []);
-
-  const toggleVpn = async (action) => {
-    if (!window.confirm(`Deseja ${action === 'start' ? 'ativar' : 'desativar'} a VPN?`)) return;
-    
-    setVpnLoading(true);
-    try {
-      const data = await apiFetch('/api/vpn/status', {
-        method: 'POST',
-        body: JSON.stringify({ action: action === 'start' ? 'up' : 'down' })
-      });
-      if (data.ok) {
-        addToast(`Comando VPN enviado!`, 'success');
-        setTimeout(() => {
-          getVpnStatus();
-          fetchStatus();
-        }, 5000);
-      } else {
-        addToast(data.error || 'Erro ao executar.', 'error');
-      }
-    } catch {
-      addToast('Erro de rede.', 'error');
-    }
-    setVpnLoading(false);
+    fetchGlobalStatus(true);
+    loadControlData();
   };
 
-  useEffect(() => {
-    if (subTab === 'system') fetchSystemControl();
-    if (subTab === 'maintenance') getVpnStatus();
-  }, [subTab, fetchSystemControl, getVpnStatus]);
-
-  const quickCommands = [
-    { label: 'Status Geral', cmd: 'uptime && free -h && df -h /' },
-    { label: 'Containers', cmd: 'sudo docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"' },
-    { label: 'Túnel Bore (Porta 22)', cmd: 'journalctl -u bore-tunnel -n 15 --no-pager' },
-    { label: 'Portas Ativas', cmd: 'ss -tulpn | grep LISTEN' },
-    { label: 'Modelos Ollama', cmd: 'ollama list' },
-    { label: 'Tailscale', cmd: 'tailscale status' },
-    { label: 'Top CPU', cmd: 'ps -eo pid,user,%cpu,%mem,comm --sort=-%cpu | head -n 12' },
-    { label: 'Logs Sistema', cmd: 'journalctl -n 30 --no-pager' },
-  ];
+  const handleVpnStatus = async () => {
+    showOutput('Status da Rede / Tailscale VPN', '', true);
+    try {
+      const res = await apiFetch('/api/vpn/status');
+      showOutput('Status da Rede / Tailscale VPN', res.output || 'Sem saída.', false);
+    } catch (err) {
+      showOutput('Erro ao consultar VPN', err.message, false);
+    }
+  };
 
   return (
-    <div className="space-y-4 text-xs">
-      {/* Sub-navigation */}
-      <div className="flex flex-wrap items-center justify-between gap-2 bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] p-2 rounded-2xl">
-        <div className="flex flex-wrap gap-1.5">
-          <button
-            onClick={() => setSubTab('terminal')}
-            className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${
-              subTab === 'terminal'
-                ? 'bg-[var(--md-sys-color-primary)] text-white'
-                : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
-            }`}
-          >
-            <span className="material-symbols-outlined text-[16px]">terminal</span>
-            <span>Console SSH Direto</span>
-          </button>
-          <button
-            onClick={() => setSubTab('system')}
-            className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${
-              subTab === 'system'
-                ? 'bg-[var(--md-sys-color-primary)] text-white'
-                : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
-            }`}
-          >
-            <span className="material-symbols-outlined text-[16px]">monitoring</span>
-            <span>Processos & Serviços</span>
-          </button>
-          <button
-            onClick={() => setSubTab('maintenance')}
-            className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${
-              subTab === 'maintenance'
-                ? 'bg-[var(--md-sys-color-primary)] text-white'
-                : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
-            }`}
-          >
-            <span className="material-symbols-outlined text-[16px]">build</span>
-            <span>VPN & Manutenção</span>
-          </button>
+    <div className="space-y-6">
+      {/* Configuração de Rota SSH e Diagnóstico de Rede */}
+      <div className="bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] rounded-2xl p-5 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-bold">Roteamento SSH & Conectividade</h2>
+            <p className="text-xs text-[var(--md-sys-color-on-surface-variant)] font-mono">
+              Endpoint ativo: {sysData.host || 'padrão'}:{sysData.port || 22} ({sysData.route || 'auto'})
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleVpnStatus}
+              className="px-3 py-1.5 rounded-xl text-xs font-medium bg-[var(--md-sys-color-surface-variant)]"
+            >
+              Verificar Tailscale VPN
+            </button>
+            <button
+              onClick={loadControlData}
+              className="px-3 py-1.5 rounded-xl text-xs font-medium bg-[var(--md-sys-color-primary)] text-white"
+            >
+              Atualizar Dados
+            </button>
+          </div>
         </div>
 
-        {subTab === 'system' && (
+        <form onSubmit={handleSaveOverride} className="flex flex-wrap gap-2 pt-2">
+          <input
+            type="text"
+            value={overrideInput}
+            onChange={(e) => setOverrideInput(e.target.value)}
+            placeholder="Override de Host:Porta SSH (ex: bore.pub:42204 ou 192.168.15.109:22) — deixe vazio para automático"
+            className="flex-1 min-w-[240px] bg-[var(--md-sys-color-surface-variant)] text-xs font-mono rounded-xl px-3.5 py-2 outline-none"
+          />
           <button
-            onClick={fetchSystemControl}
-            disabled={sysLoading}
-            className="px-2.5 py-1.5 rounded-xl border border-[var(--md-sys-color-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)] flex items-center gap-1"
+            type="submit"
+            className="px-4 py-2 rounded-xl text-xs font-medium bg-[var(--md-sys-color-primary)] text-white"
           >
-            <span className={`material-symbols-outlined text-sm ${sysLoading ? 'animate-spin' : ''}`}>refresh</span>
-            <span>Atualizar</span>
+            Aplicar Rota
           </button>
+        </form>
+      </div>
+
+      {/* Serviços Systemd */}
+      <div className="bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] rounded-2xl p-5 space-y-3">
+        <h2 className="text-sm font-bold">Serviços do Sistema (systemd)</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {sysData.services.map((srv) => (
+            <div
+              key={srv.name}
+              className="border border-[var(--md-sys-color-surface-variant)] rounded-xl p-3.5 flex items-center justify-between gap-2"
+            >
+              <div>
+                <div className="text-xs font-bold font-mono">{srv.name}</div>
+                <div className="text-[11px] text-[var(--md-sys-color-on-surface-variant)] uppercase">
+                  Estado: {srv.state}
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => handleServiceOp(srv.name, srv.active ? 'restart' : 'start')}
+                  className="px-2.5 py-1 rounded-lg text-xs bg-[var(--md-sys-color-primary)] text-white"
+                >
+                  {srv.active ? 'Reiniciar' : 'Iniciar'}
+                </button>
+                {srv.active && srv.name !== 'ssh' && (
+                  <button
+                    onClick={() => handleServiceOp(srv.name, 'stop')}
+                    className="px-2.5 py-1 rounded-lg text-xs bg-[var(--md-sys-color-surface-variant)]"
+                  >
+                    Parar
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Tabela de Processos */}
+      <div className="bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] rounded-2xl p-5 space-y-3">
+        <h2 className="text-sm font-bold">Processos com Maior Consumo (CPU / RAM)</h2>
+        {loading ? (
+          <p className="text-xs text-[var(--md-sys-color-on-surface-variant)]">Carregando processos...</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs font-mono">
+              <thead>
+                <tr className="border-b border-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)]">
+                  <th className="py-2 pr-3">PID</th>
+                  <th className="py-2 pr-3">USUÁRIO</th>
+                  <th className="py-2 pr-3">%CPU</th>
+                  <th className="py-2 pr-3">%MEM</th>
+                  <th className="py-2 pr-3">TEMPO</th>
+                  <th className="py-2 pr-3">COMANDO</th>
+                  <th className="py-2 text-right">AÇÃO</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--md-sys-color-surface-variant)]">
+                {sysData.processes.map((p) => (
+                  <tr key={p.pid}>
+                    <td className="py-2 pr-3 font-bold">{p.pid}</td>
+                    <td className="py-2 pr-3">{p.user}</td>
+                    <td className="py-2 pr-3">{p.cpu}%</td>
+                    <td className="py-2 pr-3">{p.mem}%</td>
+                    <td className="py-2 pr-3">{p.elapsed}</td>
+                    <td className="py-2 pr-3 truncate max-w-[220px]">{p.command}</td>
+                    <td className="py-2 text-right">
+                      <button
+                        onClick={() => handleKillProcess(p.pid, p.command)}
+                        className="px-2 py-0.5 rounded bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)] text-[11px]"
+                      >
+                        Encerrar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
-      {/* 1. CONSOLE SSH DIRETO VIA HTTPS (Funciona em qualquer rede / 4G / Vercel sem abrir portas extras) */}
-      {subTab === 'terminal' && (
-        <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-3">
+      {/* Portas em Escuta e Túneis */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] rounded-2xl p-4 space-y-2">
+          <h3 className="text-xs font-bold uppercase text-[var(--md-sys-color-on-surface-variant)]">
+            Portas TCP em Escuta
+          </h3>
           <div className="flex flex-wrap gap-1.5">
-            {quickCommands.map((q, idx) => (
-              <button
-                key={idx}
-                onClick={() => runDirectCommand(q.cmd)}
-                disabled={termRunning}
-                className="px-2.5 py-1 rounded-lg bg-[var(--md-sys-color-surface-variant)] hover:bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-surface-variant)] hover:text-[var(--md-sys-color-on-primary-container)] font-medium text-[11px] transition-colors"
+            {sysData.listeningPorts.map((port) => (
+              <span
+                key={port}
+                className="px-2 py-1 rounded-lg text-xs font-mono bg-[var(--md-sys-color-surface-variant)]"
               >
-                {q.label}
-              </button>
+                {port}
+              </span>
             ))}
-            <button
-              onClick={() => setTermHistory([])}
-              className="ml-auto px-2.5 py-1 rounded-lg border border-[var(--md-sys-color-surface-variant)] text-[11px] opacity-75 hover:opacity-100"
-            >
-              Limpar
-            </button>
           </div>
+        </div>
 
-          <div className="bg-black text-green-400 font-mono text-[11px] p-3.5 rounded-xl h-[360px] overflow-y-auto space-y-2 border border-gray-800">
-            {termHistory.length === 0 ? (
-              <div className="text-gray-500">
-                Console SSH Direto via HTTPS — opere o servidor de qualquer lugar (sem depender de iframes ou portas extras).
-              </div>
+        <div className="bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] rounded-2xl p-4 space-y-2">
+          <h3 className="text-xs font-bold uppercase text-[var(--md-sys-color-on-surface-variant)]">
+            Túneis Ativos Detectados
+          </h3>
+          <div className="flex flex-wrap gap-1.5">
+            {sysData.activeTunnels.length === 0 ? (
+              <span className="text-xs text-[var(--md-sys-color-on-surface-variant)]">
+                Nenhum túnel público secundário listado.
+              </span>
             ) : (
-              termHistory.map((item, i) => (
-                <div key={i}>
-                  {item.type === 'cmd' && (
-                    <div className="text-cyan-400 font-bold">
-                      rodrigo@srv:{item.cwd}$ <span className="text-white font-normal">{item.text}</span>
-                    </div>
-                  )}
-                  {item.type === 'out' && (
-                    <pre className="whitespace-pre-wrap text-green-300 pl-1">
-                      {item.text}
-                      {item.exitCode !== 0 ? `\n[Exit Code: ${item.exitCode}]` : ''}
-                    </pre>
-                  )}
-                  {item.type === 'err' && (
-                    <pre className="whitespace-pre-wrap text-red-400 pl-1">{item.text}</pre>
-                  )}
-                </div>
+              sysData.activeTunnels.map((t) => (
+                <span
+                  key={t}
+                  className="px-2.5 py-1 rounded-lg text-xs font-mono bg-[var(--md-sys-color-surface-variant)]"
+                >
+                  {t}
+                </span>
               ))
             )}
-            {termRunning && (
-              <div className="text-yellow-400 animate-pulse">Executando comando no servidor...</div>
-            )}
-            <div ref={termEndRef} />
-          </div>
-
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              runDirectCommand();
-            }}
-            className="flex gap-2"
-          >
-            <span className="px-2.5 py-2 rounded-xl bg-black text-cyan-400 font-mono text-[11px] flex items-center">
-              {cwd}$
-            </span>
-            <input
-              type="text"
-              value={cmdInput}
-              onChange={(e) => setCmdInput(e.target.value)}
-              placeholder="Digite qualquer comando Linux (ex: sudo systemctl status docker, htop, ls -la)..."
-              disabled={termRunning}
-              className="flex-1 bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3.5 py-2 font-mono text-xs outline-none border border-transparent focus:border-[var(--md-sys-color-primary)]"
-            />
-            <button
-              type="submit"
-              disabled={termRunning || !cmdInput.trim()}
-              className="btn-primary px-4 py-2 rounded-xl font-bold flex items-center gap-1"
-            >
-              <span className="material-symbols-outlined text-sm">send</span>
-              <span>Executar</span>
-            </button>
-          </form>
-        </div>
-      )}
-
-      {/* 2. GERENCIADOR DE PROCESSOS, SERVIÇOS SYSTEMD & TÚNEIS ATIVOS */}
-      {subTab === 'system' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Serviços Systemd & Túneis */}
-          <div className="space-y-4">
-            <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-3">
-              <span className="font-semibold text-xs flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[var(--md-sys-color-primary)]">settings_applications</span>
-                Serviços Críticos do Servidor (systemd)
-              </span>
-              <div className="divide-y divide-[var(--md-sys-color-surface-variant)]">
-                {sysData.services.map((srv, idx) => (
-                  <div key={idx} className="py-2 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full ${srv.active ? 'bg-green-500' : 'bg-red-500'}`} />
-                      <span className="font-mono font-semibold">{srv.name}</span>
-                      <span className="text-[10px] text-[var(--md-sys-color-on-surface-variant)]">({srv.state})</span>
-                    </div>
-                    <div className="flex gap-1">
-                      {!srv.active ? (
-                        <button
-                          onClick={() => handleServiceAction(srv.name, 'start')}
-                          className="px-2 py-1 rounded-lg bg-green-600 text-white text-[10px] font-bold"
-                        >
-                          Iniciar
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleServiceAction(srv.name, 'stop')}
-                          className="px-2 py-1 rounded-lg bg-red-600/80 text-white text-[10px] font-bold"
-                        >
-                          Parar
-                        </button>
-                      )}
-                      <button
-                        onClick={() => handleServiceAction(srv.name, 'restart')}
-                        className="px-2 py-1 rounded-lg bg-[var(--md-sys-color-surface-variant)] text-[10px] font-semibold"
-                      >
-                        Reiniciar
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-2">
-              <span className="font-semibold text-xs flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[var(--md-sys-color-primary)]">public</span>
-                Túneis Remotos & Portas em Escuta
-              </span>
-              {sysData.activeTunnels.length > 0 && (
-                <div className="p-2.5 rounded-xl bg-black text-green-400 font-mono text-[11px] space-y-1">
-                  {sysData.activeTunnels.map((t, i) => (
-                    <div key={i}>🔗 {t}</div>
-                  ))}
-                </div>
-              )}
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {sysData.listeningPorts.map((p, i) => (
-                  <span key={i} className="px-2 py-0.5 rounded-lg bg-[var(--md-sys-color-surface-variant)] font-mono text-[10px]">
-                    {p}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Top Processos CPU / RAM */}
-          <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] rounded-2xl overflow-hidden flex flex-col">
-            <div className="p-3.5 border-b border-[var(--md-sys-color-surface-variant)] font-semibold flex items-center justify-between">
-              <span>Top Processos (CPU / RAM)</span>
-              <span className="text-[10px] text-[var(--md-sys-color-on-surface-variant)]">Clique no X para encerrar</span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-[var(--md-sys-color-surface-variant)]/50 text-[var(--md-sys-color-on-surface-variant)]">
-                    <th className="text-left py-2 px-3">PID</th>
-                    <th className="text-left py-2 px-3">Processo</th>
-                    <th className="text-right py-2 px-3">CPU%</th>
-                    <th className="text-right py-2 px-3">MEM%</th>
-                    <th className="text-right py-2 px-3">Ação</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--md-sys-color-surface-variant)]">
-                  {sysData.processes.map((proc, idx) => (
-                    <tr key={idx} className="hover:bg-[var(--md-sys-color-surface-variant)]/30">
-                      <td className="py-1.5 px-3 font-mono text-[10px]">{proc.pid}</td>
-                      <td className="py-1.5 px-3 font-mono font-medium truncate max-w-[140px]">{proc.command}</td>
-                      <td className="py-1.5 px-3 text-right font-mono">{proc.cpu}%</td>
-                      <td className="py-1.5 px-3 text-right font-mono">{proc.mem}%</td>
-                      <td className="py-1.5 px-3 text-right">
-                        <button
-                          onClick={() => handleKillProcess(proc.pid, proc.command)}
-                          title={`Encerrar PID ${proc.pid}`}
-                          className="w-6 h-6 rounded-lg hover:bg-red-500/20 text-[var(--md-sys-color-error)] inline-flex items-center justify-center"
-                        >
-                          <span className="material-symbols-outlined text-[15px]">close</span>
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 3. VPN TAILSCALE & MANUTENÇÃO */}
-      {subTab === 'maintenance' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="space-y-4">
-            <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-xs flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-[var(--md-sys-color-primary)]">vpn_lock</span>
-                  VPN Tailscale
-                </span>
-                <button onClick={getVpnStatus} disabled={vpnLoading} className="w-7 h-7 rounded-lg hover:bg-black/5 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-base">refresh</span>
-                </button>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => toggleVpn('start')} disabled={vpnLoading} className="btn-primary py-2 px-3 rounded-xl font-bold flex-1 flex items-center justify-center gap-1">
-                  <span className="material-symbols-outlined text-sm">vpn_lock</span>
-                  <span>Ligar</span>
-                </button>
-                <button onClick={() => toggleVpn('stop')} disabled={vpnLoading} className="btn-danger py-2 px-3 rounded-xl font-bold flex-1 flex items-center justify-center gap-1">
-                  <span className="material-symbols-outlined text-sm">link_off</span>
-                  <span>Desligar</span>
-                </button>
-              </div>
-
-              <pre className="p-3 bg-black text-green-400 font-mono text-[10px] rounded-xl max-h-[120px] overflow-auto whitespace-pre-wrap">
-                {vpnLoading ? 'Carregando status...' : vpnStatus}
-              </pre>
-            </div>
-
-            <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-3">
-              <span className="font-semibold text-xs flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[var(--md-sys-color-primary)]">build</span>
-                Manutenção
-              </span>
-              <div className="flex gap-2">
-                <button onClick={() => runMaintenance('clean', 'Limpar Lixo')} disabled={loading} className="btn-ghost py-2 px-3 rounded-xl font-bold flex-1 flex items-center justify-center gap-1 text-[var(--md-sys-color-error)] border-[var(--md-sys-color-error)]/20 hover:bg-[var(--md-sys-color-error-container)]">
-                  <span className="material-symbols-outlined text-sm">delete_sweep</span>
-                  <span>Limpar</span>
-                </button>
-                <button onClick={() => runMaintenance('update', 'Atualizar Servidor')} disabled={loading} className="btn-ghost py-2 px-3 rounded-xl font-bold flex-1 flex items-center justify-center gap-1">
-                  <span className="material-symbols-outlined text-sm">system_update</span>
-                  <span>Atualizar</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-col bg-black text-green-400 p-3 rounded-2xl font-mono text-[11px] min-h-[200px] max-h-[300px] overflow-auto">
-            {loading ? (
-              <div className="flex items-center gap-2 animate-pulse">
-                <span className="animate-spin material-symbols-outlined text-sm">sync</span>
-                <span>Executando...</span>
-              </div>
-            ) : (
-              <pre className="whitespace-pre-wrap">{output || 'Saída do console...'}</pre>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── VM VIEW (Windows Update Automation) ────────────────────────────────────
-function VmView({ serverStatus, addToast }) {
-  const [output, setOutput] = useState('');
-  const [winStatus, setWinStatus] = useState({ isos: { win10: false, win11: false }, vmRunning: false, reports: [] });
-  const [winLoading, setWinLoading] = useState(false);
-
-  const fetchWindowsStatus = useCallback(async () => {
-    setWinLoading(true);
-    try {
-      const data = await apiFetch('/api/maintenance/windows');
-      if (data.ok) {
-        setWinStatus(data);
-      }
-    } catch {
-      addToast('Erro ao obter status do Windows.', 'error');
-    }
-    setWinLoading(false);
-  }, [addToast]);
-
-  const toggleWinVm = async (action) => {
-    const title = action === 'start_vm' ? 'Iniciar VM de Testes' : 'Parar VM de Testes';
-    if (!window.confirm(`Deseja ${title}?`)) return;
-
-    setWinLoading(true);
-    try {
-      const data = await apiFetch('/api/maintenance/windows', {
-        method: 'POST',
-        body: JSON.stringify({ action })
-      });
-      if (data.ok) {
-        addToast(`${title} executado!`, 'success');
-        setOutput(data.output || data.message || 'Concluído.');
-        setTimeout(fetchWindowsStatus, 3000);
-      } else {
-        addToast(data.error || 'Erro ao executar.', 'error');
-      }
-    } catch {
-      addToast('Erro de rede.', 'error');
-    }
-    setWinLoading(false);
-  };
-
-  useEffect(() => {
-    fetchWindowsStatus();
-  }, [fetchWindowsStatus]);
-
-  return (
-    <div className="space-y-4 text-xs">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Left Column: VM & ISOs Card */}
-        <div className="space-y-4">
-          <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-xs flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[var(--md-sys-color-primary)]">desktop_windows</span>
-                Automação Windows (Update)
-              </span>
-              <button onClick={fetchWindowsStatus} disabled={winLoading} className="w-7 h-7 rounded-lg hover:bg-black/5 flex items-center justify-center">
-                <span className="material-symbols-outlined text-base">refresh</span>
-              </button>
-            </div>
-
-            {/* Status das ISOs e da VM */}
-            <div className="grid grid-cols-3 gap-2 text-[10px]">
-              <div className="p-2 rounded-xl bg-black/5 flex flex-col items-center justify-center text-center">
-                <span className="font-semibold text-gray-500">Win10 ISO</span>
-                <span className={`mt-1 px-1.5 py-0.5 rounded font-bold ${winStatus.isos?.win10 ? 'bg-green-500/10 text-green-600' : 'bg-red-500/10 text-red-600'}`}>
-                  {winStatus.isos?.win10 ? 'Disponível' : 'Ausente'}
-                </span>
-              </div>
-              <div className="p-2 rounded-xl bg-black/5 flex flex-col items-center justify-center text-center">
-                <span className="font-semibold text-gray-500">Win11 ISO</span>
-                <span className={`mt-1 px-1.5 py-0.5 rounded font-bold ${winStatus.isos?.win11 ? 'bg-green-500/10 text-green-600' : 'bg-red-500/10 text-red-600'}`}>
-                  {winStatus.isos?.win11 ? 'Disponível' : 'Ausente'}
-                </span>
-              </div>
-              <div className="p-2 rounded-xl bg-black/5 flex flex-col items-center justify-center text-center">
-                <span className="font-semibold text-gray-500">VM de Testes</span>
-                <span className={`mt-1 px-1.5 py-0.5 rounded font-bold ${winStatus.vmRunning ? 'bg-green-500/10 text-green-600' : 'bg-gray-500/10 text-gray-500'}`}>
-                  {winStatus.vmRunning ? 'Online' : 'Offline'}
-                </span>
-              </div>
-            </div>
-
-            {/* Controles da VM */}
-            <div className="flex gap-2">
-              <button 
-                onClick={() => toggleWinVm('start_vm')} 
-                disabled={winLoading || winStatus.vmRunning} 
-                className="btn-primary py-2 px-3 rounded-xl font-bold flex-1 flex items-center justify-center gap-1"
-              >
-                <span className="material-symbols-outlined text-sm">play_arrow</span>
-                <span>Ligar VM</span>
-              </button>
-              <button 
-                onClick={() => toggleWinVm('stop_vm')} 
-                disabled={winLoading || !winStatus.vmRunning} 
-                className="btn-danger py-2 px-3 rounded-xl font-bold flex-1 flex items-center justify-center gap-1"
-              >
-                <span className="material-symbols-outlined text-sm">stop</span>
-                <span>Desligar VM</span>
-              </button>
-            </div>
-
-            {/* VM Connection URL */}
-            {winStatus.vmRunning && (
-              <div className="bg-black/5 p-3 rounded-xl space-y-1.5 animate-fadeIn">
-                <span className="font-semibold text-[10px] text-[var(--md-sys-color-on-surface-variant)] block">URLs de Conexão:</span>
-                <div className="space-y-1 text-[10px] font-mono">
-                  <div>Web VNC: <a href={`http://${serverStatus?.host || '192.168.15.109'}:8006`} target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">http://{serverStatus?.host || '192.168.15.109'}:8006</a></div>
-                  <div>RDP: <span className="text-[var(--md-sys-color-on-surface)]">{serverStatus?.host || '192.168.15.109'}:3389</span></div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Right Column: Console / Reports */}
-        <div className="space-y-4">
-          {/* Relatório das Máquinas da Rede */}
-          <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-3 flex flex-col h-full min-h-[300px]">
-            <span className="font-semibold text-xs text-[var(--md-sys-color-on-surface)] block">
-              Relatórios de Atualização da Rede ({winStatus.reports?.length || 0})
-            </span>
-            <div className="flex-1 overflow-y-auto border border-[var(--md-sys-color-surface-variant)] rounded-xl divide-y divide-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] max-h-[400px]">
-              {!winStatus.reports || winStatus.reports.length === 0 ? (
-                <div className="p-4 text-center text-gray-500 text-xs">
-                  Nenhum relatório de máquina encontrado.
-                </div>
-              ) : (
-                winStatus.reports.map((rep, idx) => (
-                  <div key={idx} className="p-3 flex items-start justify-between gap-3 hover:bg-black/5 transition-colors">
-                    <div className="space-y-0.5 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-[var(--md-sys-color-on-surface)] text-xs truncate">{rep.hostname}</span>
-                        <span className="text-gray-400 font-mono text-[10px]">({rep.oldBuild})</span>
-                      </div>
-                      <p className="text-gray-500 text-[10px] truncate max-w-xs">{rep.message}</p>
-                    </div>
-                    <div className="text-right flex-shrink-0 space-y-1">
-                      <span className={`px-2 py-0.5 rounded-full font-bold text-[9px] ${
-                        rep.status === 'SUCESSO' ? 'bg-green-500/10 text-green-600' :
-                        rep.status === 'IGNORADO' ? 'bg-gray-500/10 text-gray-500' : 'bg-red-500/10 text-red-600'
-                      }`}>
-                        {rep.status}
-                      </span>
-                      <span className="block text-[9px] text-gray-400 font-mono">{rep.date} {rep.time}</span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
           </div>
         </div>
       </div>
-
-      {/* Live Output */}
-      {output && (
-        <div className="flex flex-col bg-black text-green-400 p-3 rounded-2xl font-mono text-[11px] max-h-[150px] overflow-auto">
-          <pre className="whitespace-pre-wrap">{output}</pre>
-        </div>
-      )}
     </div>
   );
 }
 
-// ─── SSH SANDBOX HELPER VIEW ────────────────────────────────────────────────
-function AntigravitySshView({ host, addToast }) {
-  const [copied, setCopied] = useState(false);
-  const sshCmd = `ssh root@${host || '100.119.122.10'} -p 2222`;
+/* ============================================================================
+ * 6. STORAGE & BACKUP
+ * ============================================================================ */
+function BackupView({ serverStatus, apiFetch, showOutput }) {
+  const disks = serverStatus.disks || [];
 
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(sshCmd);
-    setCopied(true);
-    addToast('Copiado!', 'success');
-    setTimeout(() => setCopied(false), 2000);
+  const runBackupAction = async (endpoint, title) => {
+    showOutput(title, '', true);
+    try {
+      const res = await apiFetch(endpoint, { method: editMethod(endpoint) });
+      const text =
+        res.log !== undefined
+          ? `Processo em execução: ${res.running ? 'SIM' : 'NÃO'}\n\n${res.log || 'Sem log disponível.'}`
+          : res.output || res.message || 'Operação concluída.';
+      showOutput(title, text, false);
+    } catch (err) {
+      showOutput(`Erro: ${title}`, err.message, false);
+    }
+  };
+
+  function editMethod(ep) {
+    return ep.endsWith('/status') || ep.endsWith('/storage') ? 'GET' : 'POST';
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] rounded-2xl p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-bold">Partições e Volumes Montados</h2>
+          <button
+            onClick={() => runBackupAction('/api/backup/storage', 'Relatório Detalhado de Storage')}
+            className="px-3 py-1.5 rounded-xl text-xs font-medium bg-[var(--md-sys-color-surface-variant)]"
+          >
+            Inspecionar Blocos (df / lsblk)
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {disks.map((d) => (
+            <div
+              key={d.mount}
+              className="border border-[var(--md-sys-color-surface-variant)] rounded-xl p-4 space-y-2"
+            >
+              <div className="flex items-center justify-between text-xs font-mono">
+                <span className="font-bold">{d.mount}</span>
+                <span>{d.filesystem}</span>
+              </div>
+              <div className="w-full h-2 rounded-full bg-[var(--md-sys-color-surface-variant)] overflow-hidden">
+                <div
+                  className="h-full bg-[var(--md-sys-color-primary)]"
+                  style={{ width: `${Math.min(100, d.percent || 0)}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-[11px] text-[var(--md-sys-color-on-surface-variant)] font-mono">
+                <span>Usado: {d.used} / {d.total}</span>
+                <span>Livre: {d.available} ({d.percent}%)</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] rounded-2xl p-5 space-y-4">
+        <h2 className="text-sm font-bold">Rotinas de Backup & Sincronização</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <button
+            onClick={() => runBackupAction('/api/backup/status', 'Status dos Backups')}
+            className="p-4 rounded-xl border border-[var(--md-sys-color-surface-variant)] text-left hover:bg-[var(--md-sys-color-surface-variant)] transition-colors space-y-1"
+          >
+            <div className="text-xs font-bold">Verificar Logs de Backup</div>
+            <p className="text-[11px] text-[var(--md-sys-color-on-surface-variant)]">
+              Consulta histórico e arquivos recentes de backup
+            </p>
+          </button>
+          <button
+            onClick={() => runBackupAction('/api/backup/full', 'Backup Completo do Sistema')}
+            className="p-4 rounded-xl border border-[var(--md-sys-color-surface-variant)] text-left hover:bg-[var(--md-sys-color-surface-variant)] transition-colors space-y-1"
+          >
+            <div className="text-xs font-bold">Executar Backup Completo</div>
+            <p className="text-[11px] text-[var(--md-sys-color-on-surface-variant)]">
+              Inicia rotina de snapshot dos diretórios principais
+            </p>
+          </button>
+          <button
+            onClick={() => runBackupAction('/api/backup/photos', 'Sincronização de Mídia')}
+            className="p-4 rounded-xl border border-[var(--md-sys-color-surface-variant)] text-left hover:bg-[var(--md-sys-color-surface-variant)] transition-colors space-y-1"
+          >
+            <div className="text-xs font-bold">Sincronizar Mídia e Documentos</div>
+            <p className="text-[11px] text-[var(--md-sys-color-on-surface-variant)]">
+              Executa cópia incremental de arquivos de mídia
+            </p>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================================
+ * 7. MANUTENÇÃO E ENERGIA
+ * ============================================================================ */
+function ManutencaoView({ apiFetch, showOutput, askConfirm }) {
+  const execMaint = async (endpoint, title) => {
+    showOutput(title, '', true);
+    try {
+      const res = await apiFetch(endpoint, { method: 'POST' });
+      showOutput(title, res.output || res.message || 'Concluído.', false);
+    } catch (err) {
+      showOutput(`Erro: ${title}`, err.message, false);
+    }
+  };
+
+  const ACTIONS = [
+    {
+      title: 'Atualizar Pacotes do Sistema (APT)',
+      desc: 'Executa apt-get update && apt-get upgrade -y de forma não-interativa',
+      endpoint: '/api/maintenance/update',
+      danger: false,
+    },
+    {
+      title: 'Limpeza de Cache e Imagens Órfãs',
+      desc: 'Executa apt autoremove, journalctl vacuum e limpeza de recursos temporários',
+      endpoint: '/api/maintenance/clean',
+      danger: false,
+    },
+    {
+      title: 'Reiniciar Daemon Docker',
+      desc: 'Reinicia o serviço systemd do Docker e recarrega containers ativos',
+      endpoint: '/api/docker/restart-service',
+      danger: true,
+    },
+    {
+      title: 'Alternar Próximo Boot para Windows',
+      desc: 'Configura grub-reboot para inicializar a partição Windows no próximo reinício',
+      endpoint: '/api/maintenance/windows',
+      danger: true,
+    },
+    {
+      title: 'Enviar Pacote Wake-on-LAN (WoL)',
+      desc: 'Aciona placa de rede local via Magic Packet',
+      endpoint: '/api/power/wol',
+      danger: false,
+    },
+    {
+      title: 'Reiniciar Servidor (Reboot)',
+      desc: 'Reinicia imediatamente o sistema operacional do servidor',
+      endpoint: '/api/power/reboot',
+      danger: true,
+    },
+    {
+      title: 'Desligar Servidor (Shutdown)',
+      desc: 'Encerra todos os serviços e desliga a máquina física',
+      endpoint: '/api/power/shutdown',
+      danger: true,
+    },
+  ];
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {ACTIONS.map((item) => (
+        <div
+          key={item.endpoint}
+          className="bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] rounded-2xl p-5 flex flex-col justify-between gap-4"
+        >
+          <div>
+            <h3 className="text-sm font-bold">{item.title}</h3>
+            <p className="text-xs text-[var(--md-sys-color-on-surface-variant)] mt-1">
+              {item.desc}
+            </p>
+          </div>
+          <div className="flex justify-end">
+            <button
+              onClick={() =>
+                item.danger
+                  ? askConfirm(
+                      item.title,
+                      `Confirma a execução de "${item.title}" no servidor?`,
+                      () => execMaint(item.endpoint, item.title),
+                      true
+                    )
+                  : execMaint(item.endpoint, item.title)
+              }
+              className={`px-4 py-2 rounded-xl text-xs font-medium ${
+                item.danger
+                  ? 'bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)]'
+                  : 'bg-[var(--md-sys-color-primary)] text-white'
+              }`}
+            >
+              Executar
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ============================================================================
+ * 8. LOGS DE AUDITORIA NO SERVIDOR (TEMPO REAL + FILTROS + EXPORTAÇÃO)
+ * ============================================================================ */
+function LogsView({ apiFetch, deviceIdentity, askConfirm }) {
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [level, setLevel] = useState('all');
+  const [deviceScope, setDeviceScope] = useState('all');
+  const [search, setSearch] = useState('');
+
+  const loadLogs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        limit: '200',
+        level,
+        search,
+        deviceId: deviceScope === 'current' ? deviceIdentity.deviceId : 'all',
+      });
+      const data = await apiFetch(`/api/logs?${params.toString()}`);
+      setLogs(data.logs || []);
+    } catch (_) {
+    } finally {
+      setLoading(false);
+    }
+  }, [apiFetch, level, search, deviceScope, deviceIdentity.deviceId]);
+
+  useEffect(() => {
+    loadLogs();
+  }, [loadLogs]);
+
+  const handleClearLogs = () => {
+    askConfirm(
+      'Limpar Logs de Auditoria',
+      'Deseja limpar o arquivo ~/dashboard-audit.log no servidor e o buffer de auditoria?',
+      async () => {
+        await apiFetch('/api/logs', { method: 'DELETE' });
+        await loadLogs();
+      },
+      true
+    );
+  };
+
+  const handleExportJson = () => {
+    const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `srv-audit-logs-${new Date().toISOString().slice(0, 19)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
-    <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center max-w-sm mx-auto space-y-4">
-      <h3 className="text-xs font-semibold text-[var(--md-sys-color-on-surface)]">
-        Antigravity SSH
-      </h3>
-      <div className="w-full bg-black text-green-400 p-3 rounded-xl font-mono text-[11px] text-left border border-gray-800 flex items-center justify-between select-all">
-        <span className="truncate">{sshCmd}</span>
-        <button 
-          onClick={copyToClipboard}
-          className="ml-2 bg-gray-900 hover:bg-gray-800 text-green-400 border border-gray-700 p-1.5 rounded-lg flex items-center justify-center transition-colors flex-shrink-0"
-          title="Copiar"
-        >
-          <span className="material-symbols-outlined text-xs">
-            {copied ? 'check' : 'content_copy'}
-          </span>
-        </button>
+    <div className="space-y-4">
+      <div className="bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[240px]">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Pesquisar rota, comando, usuário, IP ou dispositivo..."
+            className="flex-1 bg-[var(--md-sys-color-surface-variant)] text-xs rounded-xl px-3.5 py-2 outline-none"
+          />
+          <select
+            value={level}
+            onChange={(e) => setLevel(e.target.value)}
+            className="bg-[var(--md-sys-color-surface-variant)] text-xs rounded-xl px-3 py-2 outline-none"
+          >
+            <option value="all">Todos os Níveis</option>
+            <option value="info">INFO</option>
+            <option value="warn">WARN</option>
+            <option value="error">ERROR</option>
+          </select>
+          <select
+            value={deviceScope}
+            onChange={(e) => setDeviceScope(e.target.value)}
+            className="bg-[var(--md-sys-color-surface-variant)] text-xs rounded-xl px-3 py-2 outline-none"
+          >
+            <option value="all">Todos os Dispositivos</option>
+            <option value="current">Apenas Este Dispositivo</option>
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportJson}
+            className="px-3 py-2 rounded-xl text-xs font-medium bg-[var(--md-sys-color-surface-variant)]"
+          >
+            Exportar JSON
+          </button>
+          <button
+            onClick={handleClearLogs}
+            className="px-3 py-2 rounded-xl text-xs font-medium bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)]"
+          >
+            Limpar Logs
+          </button>
+          <button
+            onClick={loadLogs}
+            className="px-3 py-2 rounded-xl text-xs font-medium bg-[var(--md-sys-color-primary)] text-white"
+          >
+            Atualizar
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] rounded-2xl overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-[var(--md-sys-color-surface-variant)] flex items-center justify-between text-xs text-[var(--md-sys-color-on-surface-variant)] font-mono">
+          <span>Arquivo persistente no servidor: ~/dashboard-audit.log</span>
+          <span>Registros carregados: {logs.length}</span>
+        </div>
+
+        {loading ? (
+          <div className="p-8 text-center text-xs text-[var(--md-sys-color-on-surface-variant)]">
+            Carregando registros de auditoria do servidor...
+          </div>
+        ) : logs.length === 0 ? (
+          <div className="p-8 text-center text-xs text-[var(--md-sys-color-on-surface-variant)]">
+            Nenhum evento encontrado para os filtros aplicados.
+          </div>
+        ) : (
+          <div className="overflow-x-auto max-h-[65vh] overflow-y-auto">
+            <table className="w-full text-left text-xs font-mono">
+              <thead className="sticky top-0 bg-[var(--md-sys-color-surface)] border-b border-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)]">
+                <tr>
+                  <th className="py-2.5 px-3">DATA/HORA</th>
+                  <th className="py-2.5 px-3">NÍVEL</th>
+                  <th className="py-2.5 px-3">DISPOSITIVO</th>
+                  <th className="py-2.5 px-3">USUÁRIO / IP</th>
+                  <th className="py-2.5 px-3">EVENTO / ROTA</th>
+                  <th className="py-2.5 px-3">DETALHES</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--md-sys-color-surface-variant)]">
+                {logs.map((entry, idx) => (
+                  <tr key={entry.id || idx} className="hover:bg-[var(--md-sys-color-surface-variant)]/40">
+                    <td className="py-2 px-3 whitespace-nowrap text-[11px]">
+                      {entry.timestamp ? new Date(entry.timestamp).toLocaleString('pt-BR') : '-'}
+                    </td>
+                    <td className="py-2 px-3">
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${
+                          entry.level === 'error'
+                            ? 'bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)]'
+                            : 'bg-[var(--md-sys-color-surface-variant)]'
+                        }`}
+                      >
+                        {entry.level || 'info'}
+                      </span>
+                    </td>
+                    <td className="py-2 px-3 whitespace-nowrap">
+                      <div>{entry.deviceName || '-'}</div>
+                      <div className="text-[10px] text-[var(--md-sys-color-on-surface-variant)]">
+                        {entry.deviceId || ''}
+                      </div>
+                    </td>
+                    <td className="py-2 px-3 whitespace-nowrap">
+                      <div>{entry.user || 'admin'}</div>
+                      <div className="text-[10px] text-[var(--md-sys-color-on-surface-variant)]">
+                        {entry.ip || ''}
+                      </div>
+                    </td>
+                    <td className="py-2 px-3">
+                      <div className="font-bold">
+                        {entry.route ? `${entry.method || ''} ${entry.route}` : entry.message}
+                      </div>
+                      {entry.responseTime && (
+                        <div className="text-[10px] text-[var(--md-sys-color-on-surface-variant)]">
+                          Status {entry.status || 200} • {entry.responseTime}
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-2 px-3 max-w-md truncate text-[11px] text-[var(--md-sys-color-on-surface-variant)]">
+                      {entry.error ||
+                        entry.command ||
+                        entry.url ||
+                        entry.service ||
+                        entry.promptPreview ||
+                        entry.result ||
+                        '-'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================================
+ * 9. SESSÕES MULTI-DISPOSITIVO & CONTAS DE USUÁRIO
+ * ============================================================================ */
+function UsuariosView({ apiFetch, deviceIdentity, setDeviceIdentity, askConfirm }) {
+  const [users, setUsers] = useState([]);
+  const [sessions, setSessions] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Edição do dispositivo atual
+  const [deviceNameInput, setDeviceNameInput] = useState(deviceIdentity.deviceName || '');
+  const [deviceSavedMsg, setDeviceSavedMsg] = useState('');
+
+  // Formulário de usuário
+  const [newUsername, setNewUsername] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newRole, setNewRole] = useState('operator');
+  const [userMsg, setUserMsg] = useState('');
+
+  const loadUsersAndSessions = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await apiFetch('/api/users');
+      setUsers(data.users || []);
+      setSessions(data.sessions || []);
+    } catch (_) {
+    } finally {
+      setLoading(false);
+    }
+  }, [apiFetch]);
+
+  useEffect(() => {
+    setDeviceNameInput(deviceIdentity.deviceName || '');
+    loadUsersAndSessions();
+  }, [deviceIdentity.deviceName, loadUsersAndSessions]);
+
+  const handleUpdateDeviceName = async (e) => {
+    e.preventDefault();
+    const clean = deviceNameInput.trim();
+    if (!clean) return;
+    localStorage.setItem('srv-device-name', clean);
+    setDeviceIdentity((prev) => ({ ...prev, deviceName: clean }));
+    await apiFetch('/api/users', {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'update_device',
+        deviceId: deviceIdentity.deviceId,
+        deviceName: clean,
+      }),
+    });
+    setDeviceSavedMsg('Identificação atualizada.');
+    setTimeout(() => setDeviceSavedMsg(''), 3000);
+    loadUsersAndSessions();
+  };
+
+  const handleRevokeSession = (session) => {
+    askConfirm(
+      'Encerrar Sessão do Dispositivo',
+      `Deseja desconectar imediatamente o dispositivo "${session.deviceName}" (${session.ip})?`,
+      async () => {
+        await apiFetch(`/api/users?sessionId=${encodeURIComponent(session.deviceId)}`, {
+          method: 'DELETE',
+        });
+        loadUsersAndSessions();
+      },
+      true
+    );
+  };
+
+  const handleSaveUser = async (e) => {
+    e.preventDefault();
+    if (!newUsername.trim() || !newPassword.trim()) return;
+    setUserMsg('');
+    try {
+      const res = await apiFetch('/api/users', {
+        method: 'POST',
+        body: JSON.stringify({
+          username: newUsername.trim(),
+          password: newPassword,
+          role: newRole,
+        }),
+      });
+      setNewUsername('');
+      setNewPassword('');
+      setUserMsg(res.updated ? 'Senha/perfil atualizado com sucesso.' : 'Usuário cadastrado com sucesso.');
+      loadUsersAndSessions();
+    } catch (err) {
+      setUserMsg(`Erro: ${err.message}`);
+    }
+  };
+
+  const handleDeleteUser = (username) => {
+    askConfirm(
+      `Excluir Usuário ${username}`,
+      `Confirma a exclusão da conta "${username}"?`,
+      async () => {
+        await apiFetch(`/api/users?username=${encodeURIComponent(username)}`, {
+          method: 'DELETE',
+        });
+        loadUsersAndSessions();
+      },
+      true
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Identificação deste Aparelho */}
+      <div className="bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] rounded-2xl p-5 space-y-3">
+        <div>
+          <h2 className="text-sm font-bold">Identificação Deste Aparelho</h2>
+          <p className="text-xs text-[var(--md-sys-color-on-surface-variant)] font-mono">
+            ID Único de Sessão: {deviceIdentity.deviceId}
+          </p>
+        </div>
+        <form onSubmit={handleUpdateDeviceName} className="flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            value={deviceNameInput}
+            onChange={(e) => setDeviceNameInput(e.target.value)}
+            placeholder="Nome técnico deste aparelho (ex: Notebook Rodrigo, Celular Android)"
+            className="flex-1 min-w-[240px] bg-[var(--md-sys-color-surface-variant)] text-xs rounded-xl px-3.5 py-2 outline-none"
+            required
+          />
+          <button
+            type="submit"
+            className="px-4 py-2 rounded-xl text-xs font-medium bg-[var(--md-sys-color-primary)] text-white"
+          >
+            Salvar Nome do Aparelho
+          </button>
+          {deviceSavedMsg && (
+            <span className="text-xs text-[var(--md-sys-color-primary)] font-medium">
+              {deviceSavedMsg}
+            </span>
+          )}
+        </form>
+      </div>
+
+      {/* Lista de Aparelhos Conectados Simultaneamente */}
+      <div className="bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] rounded-2xl p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-bold">Aparelhos & Sessões Simultâneas</h2>
+            <p className="text-xs text-[var(--md-sys-color-on-surface-variant)]">
+              Cada aparelho opera de forma independente sem interromper os demais
+            </p>
+          </div>
+          <button
+            onClick={loadUsersAndSessions}
+            className="px-3 py-1.5 rounded-xl text-xs font-medium bg-[var(--md-sys-color-surface-variant)]"
+          >
+            Atualizar Sessões
+          </button>
+        </div>
+
+        {loading ? (
+          <p className="text-xs text-[var(--md-sys-color-on-surface-variant)]">Carregando sessões...</p>
+        ) : sessions.length === 0 ? (
+          <p className="text-xs text-[var(--md-sys-color-on-surface-variant)]">
+            Nenhuma sessão registrada no momento.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {sessions.map((s) => {
+              const isCurrent = s.deviceId === deviceIdentity.deviceId;
+              return (
+                <div
+                  key={s.deviceId}
+                  className="border border-[var(--md-sys-color-surface-variant)] rounded-xl p-4 flex flex-col justify-between gap-3"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-bold">
+                        {s.deviceName} {isCurrent ? '(Este Aparelho)' : ''}
+                      </span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-[var(--md-sys-color-surface-variant)]">
+                        {s.online ? 'ONLINE' : `INATIVO (${s.idleSeconds}s)`}
+                      </span>
+                    </div>
+                    <div className="text-[11px] font-mono text-[var(--md-sys-color-on-surface-variant)]">
+                      ID: {s.deviceId} • Usuário: {s.username} • IP: {s.ip}
+                    </div>
+                    <div className="text-[11px] text-[var(--md-sys-color-on-surface-variant)]">
+                      Módulo ativo: {s.activeApp || 'Painel Principal'} • Última atividade:{' '}
+                      {s.lastSeen ? new Date(s.lastSeen).toLocaleTimeString('pt-BR') : '-'}
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => handleRevokeSession(s)}
+                      className="px-3 py-1 rounded-lg text-xs bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)]"
+                    >
+                      Revogar Acesso deste Aparelho
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Gerenciamento de Contas de Usuário */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] rounded-2xl p-5 space-y-4">
+          <h2 className="text-sm font-bold">Adicionar ou Atualizar Conta de Usuário</h2>
+          <form onSubmit={handleSaveUser} className="space-y-3 text-xs">
+            <div>
+              <label className="block text-[11px] text-[var(--md-sys-color-on-surface-variant)] mb-1">
+                Nome de Usuário
+              </label>
+              <input
+                type="text"
+                value={newUsername}
+                onChange={(e) => setNewUsername(e.target.value)}
+                placeholder="Ex: operador1, rodrigo, admin"
+                className="w-full bg-[var(--md-sys-color-surface-variant)] rounded-xl px-3.5 py-2.5 outline-none"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] text-[var(--md-sys-color-on-surface-variant)] mb-1">
+                Senha
+              </label>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Nova senha de acesso"
+                className="w-full bg-[var(--md-sys-color-surface-variant)] rounded-xl px-3.5 py-2.5 outline-none"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] text-[var(--md-sys-color-on-surface-variant)] mb-1">
+                Perfil Técnico
+              </label>
+              <select
+                value={newRole}
+                onChange={(e) => setNewRole(e.target.value)}
+                className="w-full bg-[var(--md-sys-color-surface-variant)] rounded-xl px-3.5 py-2.5 outline-none"
+              >
+                <option value="admin">Administrador (Acesso Total)</option>
+                <option value="operator">Operador Técnico</option>
+              </select>
+            </div>
+            {userMsg && (
+              <div className="text-xs font-medium text-[var(--md-sys-color-primary)]">
+                {userMsg}
+              </div>
+            )}
+            <button
+              type="submit"
+              className="w-full py-2.5 px-4 rounded-xl font-medium bg-[var(--md-sys-color-primary)] text-white"
+            >
+              Salvar Credenciais
+            </button>
+          </form>
+        </div>
+
+        <div className="bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] rounded-2xl p-5 space-y-3">
+          <h2 className="text-sm font-bold">Contas Cadastradas</h2>
+          <div className="divide-y divide-[var(--md-sys-color-surface-variant)] text-xs">
+            {users.map((u) => (
+              <div key={u.username} className="py-3 flex items-center justify-between">
+                <div>
+                  <div className="font-bold font-mono">{u.username}</div>
+                  <div className="text-[11px] text-[var(--md-sys-color-on-surface-variant)]">
+                    Perfil: {u.role || 'admin'} • Aparelhos online: {u.activeSessions || 0}
+                  </div>
+                </div>
+                {u.username !== 'admin' && (
+                  <button
+                    onClick={() => handleDeleteUser(u.username)}
+                    className="px-2.5 py-1 rounded-lg bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)]"
+                  >
+                    Excluir
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );

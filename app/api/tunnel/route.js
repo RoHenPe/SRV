@@ -1,28 +1,51 @@
 import { apiHandler } from '@/lib/ssh';
 import { startNgrok, stopNgrok } from '@/lib/ngrok';
+import { touchDeviceSession } from '@/lib/auth';
 
 export async function POST(request) {
   return apiHandler(
-    async () => {
-      const { port, protocol, action } = await request.json();
-      
+    async (ctx) => {
+      const { port, protocol, action, mode, appName, stopAll } = await request.json();
+
       if (action === 'stop') {
-        await stopNgrok();
-        return { ok: true, message: 'Tunnel parado' };
+        if (stopAll) {
+          await stopNgrok(null);
+          return { ok: true, message: 'Túneis temporários encerrados' };
+        }
+        if (port) {
+          await stopNgrok(port);
+          return { ok: true, message: `Túnel da porta ${port} encerrado` };
+        }
+        await touchDeviceSession({
+          deviceId: ctx.deviceId,
+          deviceName: ctx.deviceName,
+          username: ctx.username,
+          ip: ctx.clientIp,
+          activeApp: null,
+        });
+        return { ok: true, message: 'Sessão de aplicativo liberada neste dispositivo' };
       }
 
       if (!port) {
         throw new Error('Porta não informada.');
       }
 
-      const url = await startNgrok(port, protocol);
+      const url = await startNgrok(port, protocol, mode || 'tunnel');
       if (!url) {
-        throw new Error('Não foi possível obter a URL pública do Ngrok. Verifique o NGROK_AUTHTOKEN no .env.');
+        throw new Error('Não foi possível obter a URL do serviço.');
       }
+
+      await touchDeviceSession({
+        deviceId: ctx.deviceId,
+        deviceName: ctx.deviceName,
+        username: ctx.username,
+        ip: ctx.clientIp,
+        activeApp: appName ? `${appName} (:${port})` : `Porta ${port}`,
+      });
 
       return {
         ok: true,
-        url
+        url,
       };
     },
     request,

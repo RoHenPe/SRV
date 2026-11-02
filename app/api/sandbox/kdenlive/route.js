@@ -1,14 +1,11 @@
 import { runAndEnsurePort, getTargetHost, apiHandler } from '@/lib/ssh';
 
-// POST /api/sandbox/kdenlive — inicia Kdenlive container e retorna URL
 export async function POST(request) {
   return apiHandler(
     async () => {
-      const startCmd = [
-        "sudo docker rm -f srv_kdenlive_sandbox 2>/dev/null || true",
-        "sleep 0.3",
-        "sudo docker run -d --name=srv_kdenlive_sandbox -e PASSWORD=\"\" -p 3005:3000 -p 3006:3001 -v /home/rodrigo/kdenlive_config:/config -v /home/rodrigo:/storage --shm-size=2gb lscr.io/linuxserver/kdenlive:latest"
-      ].join(' && ');
+      const startCmd =
+        'sudo docker start srv_kdenlive_sandbox 2>/dev/null || ' +
+        'sudo docker run -d --name=srv_kdenlive_sandbox -e PASSWORD="" -p 3005:3000 -p 3006:3001 -v /home/rodrigo/kdenlive_config:/config -v /home/rodrigo:/storage --shm-size=2gb lscr.io/linuxserver/kdenlive:latest';
 
       await runAndEnsurePort({
         startCmd,
@@ -20,7 +17,7 @@ export async function POST(request) {
       const host = getTargetHost();
       return {
         ok: true,
-        message: 'Kdenlive iniciado com sucesso!',
+        message: 'Editor de Vídeo (Kdenlive) ativo.',
         url: `http://${host}:3005`,
       };
     },
@@ -28,4 +25,3 @@ export async function POST(request) {
     'POST /api/sandbox/kdenlive'
   );
 }
-

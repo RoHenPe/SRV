@@ -1,13 +1,22 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { getOrInitDeviceIdentity } from '../hooks/useApi';
 
 export default function LoginPage() {
   const router = useRouter();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [deviceName, setDeviceName] = useState('');
+  const [deviceId, setDeviceId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const identity = getOrInitDeviceIdentity();
+    setDeviceId(identity.deviceId);
+    setDeviceName(identity.deviceName);
+  }, []);
 
   async function handleLogin(e) {
     e.preventDefault();
@@ -15,12 +24,24 @@ export default function LoginPage() {
     setError(null);
 
     try {
+      const cleanDeviceName = deviceName.trim() || 'Dispositivo Web';
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('srv-device-name', cleanDeviceName);
+      }
+
       const res = await fetch('/api/auth/validate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'x-device-id': deviceId || 'default-device',
+          'x-device-name': cleanDeviceName,
         },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({
+          username: username.trim(),
+          password,
+          deviceId: deviceId || 'default-device',
+          deviceName: cleanDeviceName,
+        }),
       });
 
       const data = await res.json();
@@ -32,6 +53,7 @@ export default function LoginPage() {
       }
 
       localStorage.setItem('dashboard-token', data.token);
+      localStorage.setItem('srv-username', data.username || username.trim());
       router.push('/');
     } catch (err) {
       setError('Erro de conexão. Tente novamente.');
@@ -51,17 +73,23 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <h1 className="text-2xl font-bold text-center text-[var(--md-sys-color-on-surface)] mb-6 tracking-tight google-sans">
-            Acesso ao Painel
+          <h1 className="text-xl font-bold text-center text-[var(--md-sys-color-on-surface)] mb-1 tracking-tight google-sans">
+            Autenticação de Sistema
           </h1>
+          <p className="text-xs text-center text-[var(--md-sys-color-on-surface-variant)] mb-6">
+            Sessão isolada por dispositivo
+          </p>
 
           <form onSubmit={handleLogin} className="space-y-4 text-xs">
             <div>
+              <label className="block text-[11px] font-medium text-[var(--md-sys-color-on-surface-variant)] mb-1">
+                Usuário
+              </label>
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Usuário"
+                placeholder="admin"
                 className="w-full bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-4 py-3 text-sm outline-none focus:border-[var(--md-sys-color-primary)] border border-transparent transition-all"
                 disabled={loading}
                 autoFocus
@@ -70,14 +98,31 @@ export default function LoginPage() {
             </div>
 
             <div>
+              <label className="block text-[11px] font-medium text-[var(--md-sys-color-on-surface-variant)] mb-1">
+                Senha
+              </label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Senha"
+                placeholder="••••••••"
                 className="w-full bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-4 py-3 text-sm outline-none focus:border-[var(--md-sys-color-primary)] border border-transparent transition-all"
                 disabled={loading}
                 required
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-medium text-[var(--md-sys-color-on-surface-variant)] mb-1">
+                Identificação deste Dispositivo
+              </label>
+              <input
+                type="text"
+                value={deviceName}
+                onChange={(e) => setDeviceName(e.target.value)}
+                placeholder="Ex: Workstation Principal, Celular, Notebook"
+                className="w-full bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-4 py-2.5 text-xs outline-none focus:border-[var(--md-sys-color-primary)] border border-transparent transition-all"
+                disabled={loading}
               />
             </div>
 
@@ -100,14 +145,14 @@ export default function LoginPage() {
                   <span className="material-symbols-outlined animate-spin text-lg">
                     autorenew
                   </span>
-                  Entrando...
+                  Autenticando...
                 </>
               ) : (
                 <>
                   <span className="material-symbols-outlined text-lg">
                     login
                   </span>
-                  Entrar
+                  Iniciar Sessão
                 </>
               )}
             </button>

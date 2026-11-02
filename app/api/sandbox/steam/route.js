@@ -1,14 +1,11 @@
 import { runAndEnsurePort, getTargetHost, apiHandler } from '@/lib/ssh';
 
-// POST /api/sandbox/steam — inicia container Steam Headless
 export async function POST(request) {
   return apiHandler(
     async () => {
-      const startCmd = [
-        "sudo docker rm -f srv_steam_sandbox 2>/dev/null || true",
-        "sleep 0.3",
-        "sudo docker run -d --privileged --name srv_steam_sandbox -p 8083:8083 -p 5900:5900 -v /dev:/dev josh5/steam-headless:latest"
-      ].join(' && ');
+      const startCmd =
+        'sudo docker start srv_steam_sandbox 2>/dev/null || ' +
+        'sudo docker run -d --privileged --name srv_steam_sandbox -p 8083:8083 -p 5900:5900 -v /dev:/dev josh5/steam-headless:latest';
 
       await runAndEnsurePort({
         startCmd,
@@ -20,7 +17,7 @@ export async function POST(request) {
       const host = getTargetHost();
       return {
         ok: true,
-        message: 'Steam iniciado com sucesso!',
+        message: 'Ambiente Gráfico (Steam Headless) ativo.',
         url: `http://${host}:8083`,
       };
     },
@@ -28,4 +25,3 @@ export async function POST(request) {
     'POST /api/sandbox/steam'
   );
 }
-

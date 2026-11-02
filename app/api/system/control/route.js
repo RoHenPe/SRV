@@ -1,4 +1,5 @@
 import { runSSH, apiHandler } from '@/lib/ssh';
+import { logAction } from '@/lib/logger';
 
 const MONITORED_SERVICES = [
   'docker',
@@ -26,7 +27,7 @@ export async function GET(request) {
         'echo "===SERVICES==="',
         servicesCheck,
         'echo "===PORTS==="',
-        'ss -tln | awk \'NR>1 {print $4}\' | head -n 25',
+        "ss -tln | awk 'NR>1 {print $4}' | head -n 25",
         'echo "===TUNNELS==="',
         '(journalctl -u bore-tunnel -n 30 --no-pager 2>/dev/null | grep -o "bore.pub:[0-9]*" | tail -n 1 || true)',
         '(grep -h -o "https://[-a-zA-Z0-9]*\\.trycloudflare\\.com" /tmp/cf_*.log 2>/dev/null || true)',
@@ -98,12 +99,12 @@ export async function GET(request) {
 /**
  * POST /api/system/control
  * Ações diretas:
- * - { action: 'kill_process', pid: '1234', signal: '9' }
+ * - { action: 'kill_process', pid: '1234', signal: '9' | '15' }
  * - { action: 'service', service: 'ollama', op: 'restart' | 'start' | 'stop' }
  */
 export async function POST(request) {
   return apiHandler(
-    async () => {
+    async (ctx) => {
       const body = await request.json();
       const { action } = body;
 
@@ -114,6 +115,13 @@ export async function POST(request) {
         }
         const sig = body.signal === '15' ? '-15' : '-9';
         const res = await runSSH(`sudo kill ${sig} ${pid} 2>&1 || kill ${sig} ${pid} 2>&1`);
+        await logAction('system.kill_process', 'success', {
+          pid,
+          signal: sig,
+          user: ctx.username,
+          deviceId: ctx.deviceId,
+          deviceName: ctx.deviceName,
+        });
         return {
           message: `Processo ${pid} finalizado (${sig}).`,
           output: res.stdout || res.stderr,
@@ -129,6 +137,13 @@ export async function POST(request) {
           throw new Error(`Operação inválida: ${op}`);
         }
         const res = await runSSH(`sudo systemctl ${op} ${service} 2>&1 && systemctl is-active ${service} 2>&1`);
+        await logAction('system.service', 'success', {
+          service,
+          op,
+          user: ctx.username,
+          deviceId: ctx.deviceId,
+          deviceName: ctx.deviceName,
+        });
         return {
           message: `Serviço ${service}: ${op} executado.`,
           output: res.stdout || res.stderr,

@@ -1,14 +1,11 @@
 import { runAndEnsurePort, getTargetHost, apiHandler } from '@/lib/ssh';
 
-// POST /api/sandbox/vscode — inicia VS Code container e retorna URL
 export async function POST(request) {
   return apiHandler(
     async () => {
-      const startCmd = [
-        "sudo docker rm -f srv_vscode_sandbox 2>/dev/null || true",
-        "sleep 0.3",
-        "sudo docker run -d -p 8443:3000 -v /home/rodrigo:/home/workspace:cached --name srv_vscode_sandbox gitpod/openvscode-server:latest --without-connection-token"
-      ].join(' && ');
+      const startCmd =
+        'sudo docker start srv_vscode_sandbox 2>/dev/null || ' +
+        'sudo docker run -d -p 8443:3000 -v /home/rodrigo:/home/workspace:cached --name srv_vscode_sandbox gitpod/openvscode-server:latest --without-connection-token';
 
       await runAndEnsurePort({
         startCmd,
@@ -20,7 +17,7 @@ export async function POST(request) {
       const host = getTargetHost();
       return {
         ok: true,
-        message: 'VS Code iniciado com sucesso!',
+        message: 'Ambiente IDE (VS Code) ativo.',
         url: `http://${host}:8443`,
       };
     },
@@ -28,4 +25,3 @@ export async function POST(request) {
     'POST /api/sandbox/vscode'
   );
 }
-
