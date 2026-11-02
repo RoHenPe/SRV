@@ -27,9 +27,9 @@ function parseUptime(output) {
 
 async function apiFetch(url, options = {}) {
   const token = typeof window !== 'undefined' ? localStorage.getItem('dashboard-token') : null;
-  const sshOverride = typeof window !== 'undefined' ? localStorage.getItem('srv-ssh-override') : null;
   let deviceId = 'default-device';
   if (typeof window !== 'undefined') {
+    localStorage.removeItem('srv-ssh-override');
     deviceId = localStorage.getItem('srv-device-id') || '';
     if (!deviceId) {
       deviceId = `dev-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -39,7 +39,6 @@ async function apiFetch(url, options = {}) {
   const headers = {
     'Content-Type': 'application/json',
     ...(token && { 'Authorization': `Bearer ${token}` }),
-    ...(sshOverride && { 'x-ssh-override': sshOverride }),
     'x-device-id': deviceId,
     ...options.headers,
   };
