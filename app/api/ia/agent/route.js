@@ -21,12 +21,14 @@ export async function POST(request) {
           export PATH="$NVM_BIN:$HOME/.local/bin:$PATH"
           PROMPT_TXT=$(echo "${b64Prompt}" | base64 -d)
           if command -v agy >/dev/null 2>&1; then
-            agy --print ${isAutonomous ? '--mode accept-edits' : ''} "$PROMPT_TXT" 2>&1
+            agy ${isAutonomous ? '--dangerously-skip-permissions' : '--mode plan'} --print="$PROMPT_TXT" </dev/null 2>&1
           elif command -v interpreter >/dev/null 2>&1; then
-            interpreter ${isAutonomous ? '-y' : ''} --prompt "$PROMPT_TXT" 2>&1
+            systemctl is-active --quiet ollama || sudo systemctl start ollama 2>/dev/null || true
+            interpreter ${isAutonomous ? '-y' : ''} --prompt "$PROMPT_TXT" </dev/null 2>&1
           else
+            systemctl is-active --quiet ollama || sudo systemctl start ollama 2>/dev/null || true
             MODEL_NAME=$(ollama list 2>/dev/null | awk 'NR>1 {print $1}' | head -n 1)
-            MODEL_NAME=\${MODEL_NAME:-gemma4:latest}
+            MODEL_NAME=\${MODEL_NAME:-ia-core:latest}
             python3 -c "import json, urllib.request, base64; p = base64.b64decode('${b64Prompt}').decode('utf-8'); req = urllib.request.Request('http://127.0.0.1:11434/api/generate', data=json.dumps({'model': '$MODEL_NAME', 'prompt': p, 'stream': False}).encode('utf-8'), headers={'Content-Type': 'application/json'}); print(json.loads(urllib.request.urlopen(req, timeout=120).read().decode('utf-8')).get('response', ''))" 2>&1
           fi
         `;
@@ -36,26 +38,31 @@ export async function POST(request) {
           export PATH="$NVM_BIN:$HOME/.local/bin:$PATH"
           PROMPT_TXT=$(echo "${b64Prompt}" | base64 -d)
           if command -v crew-arquiteto >/dev/null 2>&1; then
-            crew-arquiteto --modo rapido "$PROMPT_TXT" 2>&1
+            crew-arquiteto --modo rapido "$PROMPT_TXT" </dev/null 2>&1
           elif command -v agy >/dev/null 2>&1; then
-            agy --print ${isAutonomous ? '--mode accept-edits' : ''} "$PROMPT_TXT" 2>&1
+            agy ${isAutonomous ? '--dangerously-skip-permissions' : '--mode plan'} --print="$PROMPT_TXT" </dev/null 2>&1
           else
+            systemctl is-active --quiet ollama || sudo systemctl start ollama 2>/dev/null || true
             MODEL_NAME=$(ollama list 2>/dev/null | awk 'NR>1 {print $1}' | head -n 1)
-            MODEL_NAME=\${MODEL_NAME:-gemma4:latest}
+            MODEL_NAME=\${MODEL_NAME:-ia-core:latest}
             python3 -c "import json, urllib.request, base64; p = base64.b64decode('${b64Prompt}').decode('utf-8'); req = urllib.request.Request('http://127.0.0.1:11434/api/generate', data=json.dumps({'model': '$MODEL_NAME', 'prompt': p, 'stream': False}).encode('utf-8'), headers={'Content-Type': 'application/json'}); print(json.loads(urllib.request.urlopen(req, timeout=120).read().decode('utf-8')).get('response', ''))" 2>&1
           fi
         `;
       } else if (engine === 'local-llm' || engine === 'gemma4') {
         cmd = `
-          MODEL_NAME=$(ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -i gemma | head -n 1)
+          systemctl is-active --quiet ollama || sudo systemctl start ollama 2>/dev/null || true
+          MODEL_NAME=$(ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -iE 'gemma|ia-core|jarvis|qwen' | head -n 1)
           if [ -z "$MODEL_NAME" ]; then
             MODEL_NAME=$(ollama list 2>/dev/null | awk 'NR>1 {print $1}' | head -n 1)
           fi
-          MODEL_NAME=\${MODEL_NAME:-gemma4:latest}
+          MODEL_NAME=\${MODEL_NAME:-ia-core:latest}
           python3 -c "import json, urllib.request, base64; p = base64.b64decode('${b64Prompt}').decode('utf-8'); req = urllib.request.Request('http://127.0.0.1:11434/api/generate', data=json.dumps({'model': '$MODEL_NAME', 'prompt': p, 'stream': False}).encode('utf-8'), headers={'Content-Type': 'application/json'}); print(json.loads(urllib.request.urlopen(req, timeout=120).read().decode('utf-8')).get('response', ''))" 2>&1
         `;
       } else {
-        cmd = `python3 -c "import base64, subprocess; p = base64.b64decode('${b64Prompt}').decode('utf-8'); args = ['/home/rodrigo/.local/bin/interpreter', '--prompt', p]; ${isAutonomous ? "args.insert(1, '-y'); " : ''}subprocess.run(args)" 2>&1`;
+        cmd = `
+          systemctl is-active --quiet ollama || sudo systemctl start ollama 2>/dev/null || true
+          python3 -c "import base64, subprocess; p = base64.b64decode('${b64Prompt}').decode('utf-8'); args = ['/home/rodrigo/.local/bin/interpreter', '--prompt', p]; ${isAutonomous ? "args.insert(1, '-y'); " : ''}subprocess.run(args, stdin=subprocess.DEVNULL)" 2>&1
+        `;
       }
 
       const result = await runSSH(cmd, 30000);

@@ -6,13 +6,14 @@ export async function GET(request) {
     async () => {
       let ollamaOutput = '';
       try {
-        const result = await runSSH('ollama list');
+        const result = await runSSH('(systemctl is-active --quiet ollama || sudo systemctl start ollama 2>/dev/null || true) && ollama list');
         ollamaOutput = result.stdout || '';
       } catch (e) {
         console.warn('Ollama offline ou inalcançável:', e.message);
       }
 
       const gatewayModels = [
+        { name: 'antigravity', id: 'antigravity-cli', size: 'Gemini 4 Argon' },
         { name: 'moonshotai/kimi-k3', id: 'gateway-kimi', size: 'Vercel Cloud' },
         { name: 'moonshotai/kimi-k3-fast', id: 'gateway-kimi-fast', size: 'Vercel Cloud' },
         { name: 'openai/gpt-4o-mini', id: 'gateway-gpt4o-mini', size: 'Vercel Cloud' },

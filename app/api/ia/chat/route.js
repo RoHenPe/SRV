@@ -13,6 +13,25 @@ export async function POST(request) {
 
       const systemPrompt = 'Você é o assistente oficial do ROHENPER Dashboard, um painel de administração de servidor Linux doméstico rodando Ubuntu, Docker, túnel Bore e Tailscale. Auxilie o administrador a diagnosticar problemas, monitorar recursos (CPU/RAM/Disco), sugerir comandos e gerenciar serviços de forma profissional, direta e segura. Responda em formato markdown legível.';
 
+      // Se o modelo selecionado for o Antigravity CLI no servidor
+      if (model === 'antigravity' || model.startsWith('antigravity')) {
+        const lastMsg = messages[messages.length - 1]?.content || '';
+        const b64Prompt = Buffer.from(lastMsg, 'utf-8').toString('base64');
+        const agyCmd = `
+          NVM_BIN=$(ls -d "$HOME"/.nvm/versions/node/*/bin 2>/dev/null | tail -n 1)
+          export PATH="$NVM_BIN:$HOME/.local/bin:$PATH"
+          PROMPT_TXT=$(echo "${b64Prompt}" | base64 -d)
+          agy --dangerously-skip-permissions --print="$PROMPT_TXT" </dev/null 2>&1
+        `;
+        const agyRes = await runSSH(agyCmd, 30000);
+        return {
+          message: {
+            role: 'assistant',
+            content: (agyRes.stdout || agyRes.stderr || 'Sem resposta do Antigravity.').trim(),
+          },
+        };
+      }
+
       // Se o modelo for da nuvem (Vercel AI Gateway)
       if (provider === 'gateway' || model.includes('/') || model.startsWith('gateway:')) {
         const gatewayModel = model.replace(/^gateway:/, '');
@@ -35,6 +54,21 @@ export async function POST(request) {
             },
           };
         } catch (gatewayErr) {
+          // Fallback automático para Antigravity no servidor caso o gateway falhe
+          const lastMsg = messages[messages.length - 1]?.content || '';
+          const b64Prompt = Buffer.from(lastMsg, 'utf-8').toString('base64');
+          const agyRes = await runSSH(
+            `export PATH="$HOME/.local/bin:$PATH"; PROMPT_TXT=$(echo "${b64Prompt}" | base64 -d); agy --dangerously-skip-permissions --print="$PROMPT_TXT" </dev/null 2>&1`,
+            30000
+          );
+          if (agyRes.stdout?.trim()) {
+            return {
+              message: {
+                role: 'assistant',
+                content: agyRes.stdout.trim(),
+              },
+            };
+          }
           throw new Error(`Vercel AI Gateway (${gatewayModel}): ${gatewayErr.message || gatewayErr}`);
         }
       }
@@ -57,8 +91,8 @@ export async function POST(request) {
 
       const b64Payload = Buffer.from(jsonPayload).toString('base64');
       
-      // Efficient in-memory execution via curl stdin (no temp files created or disk IO on the remote server)
-      const cmd = `echo "${b64Payload}" | base64 -d | curl -s -X POST http://127.0.0.1:11434/api/chat -H "Content-Type: application/json" -d @-`;
+      // Garante que o Ollama esteja ativo e executa via curl stdin
+      const cmd = `(systemctl is-active --quiet ollama || sudo systemctl start ollama 2>/dev/null || true) && echo "${b64Payload}" | base64 -d | curl -s -X POST http://127.0.0.1:11434/api/chat -H "Content-Type: application/json" -d @-`;
       
       const result = await runSSH(cmd);
       if (result.code !== 0) {

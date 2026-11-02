@@ -17,7 +17,7 @@ export async function POST(request) {
 
       // 2. Inicia o backup em segundo plano no servidor (worker logic)
       // Isso libera a requisição HTTP imediatamente para evitar timeouts no Vercel
-      await runSSH('nohup python3 ~/Automation/Apps/Backup/run_headless.py --worker >/dev/null 2>&1 &');
+      await runSSH('nohup python3 ~/Automation/Apps/Backup/run_headless.py --worker </dev/null >/dev/null 2>&1 &');
 
       return {
         ok: true,

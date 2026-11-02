@@ -5,7 +5,7 @@ export async function POST(request) {
     async () => {
       const startCmd =
         'sudo docker start srv_ag_sandbox 2>/dev/null || ' +
-        'sudo docker run -d --name srv_ag_sandbox --network host -v /home/rodrigo/.ssh:/home/rodrigo/.ssh:ro -v /home/rodrigo/.ssh:/root/.ssh:ro srv-dashboard-srv-dashboard:latest ttyd -W -p 7685 ssh -o StrictHostKeyChecking=no -t rodrigo@127.0.0.1 /home/rodrigo/.local/bin/antigravity';
+        'sudo docker run -d --name srv_ag_sandbox --network host -v /home/rodrigo/.ssh:/home/rodrigo/.ssh:ro -v /home/rodrigo/.ssh:/root/.ssh:ro srv-dashboard-srv-dashboard:latest ttyd -W -p 7685 ssh -o StrictHostKeyChecking=no -t rodrigo@127.0.0.1 "export PATH=\\$HOME/.local/bin:\\$(ls -d \\$HOME/.nvm/versions/node/*/bin 2>/dev/null | tail -n 1):\\$PATH; cd \\$HOME; /home/rodrigo/.local/bin/antigravity; exec bash -l"';
 
       await runAndEnsurePort({
         startCmd,

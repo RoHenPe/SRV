@@ -278,9 +278,7 @@ export default function DashboardPage() {
         });
         if (tunRes.ok && tunRes.url) {
           const base = tunRes.url.replace(/\/$/, '');
-          const full = base + path;
-          const separator = full.includes('?') ? '&' : '?';
-          return full + separator + '_t=' + Date.now();
+          return base + path;
         } else if (tunRes.error) {
           throw new Error(tunRes.error);
         }
