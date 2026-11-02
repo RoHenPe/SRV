@@ -464,10 +464,11 @@ export default function DashboardPage() {
       
       if (activeApp.type === 'sandbox') {
         endpoint = '/api/docker/stop';
-        let name = `srv_${activeApp.id}_sandbox`;
+        let name = activeApp.containerName || `srv_${activeApp.id}_sandbox`;
         if (activeApp.id === 'filebrowser') name = 'srv_filebrowser';
         else if (activeApp.id === 'antigravity') name = 'srv_ag_sandbox';
         else if (activeApp.id === 'neovim') name = 'srv_nvim_sandbox';
+        else if (activeApp.id === 'roblox') name = 'srv_steam_sandbox';
         body = { name };
       } else if (activeApp.type === 'service') {
         endpoint = '/api/services';
@@ -624,9 +625,6 @@ export default function DashboardPage() {
                       <span className="material-symbols-outlined text-[16px]">arrow_back</span>
                       <span className="hidden sm:inline">Voltar</span>
                     </button>
-                    <span className="font-mono text-[10px] text-[var(--md-sys-color-on-surface-variant)] truncate">
-                      {iframeUrl || 'Carregando...'}
-                    </span>
                   </div>
                   <div className="flex items-center gap-1">
                     {iframeUrl && (
