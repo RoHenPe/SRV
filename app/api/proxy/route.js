@@ -1,23 +1,84 @@
 import { NextResponse } from 'next/server';
-import { logError } from '@/lib/logger';
+import { logError, logWarn } from '@/lib/logger';
+import { getClientIp, getClientDeviceId, checkRateLimit } from '@/lib/rateLimit';
+
+function isAllowedProxyTarget(targetUrl) {
+  if (!targetUrl || !['http:', 'https:'].includes(targetUrl.protocol)) {
+    return false;
+  }
+  const host = (targetUrl.hostname || '').toLowerCase().trim();
+  if (!host) return false;
+
+  // Block loopback, link-local (cloud metadata 169.254.169.254), and unspecified addresses
+  if (
+    host === 'localhost' ||
+    host === '0.0.0.0' ||
+    host === '[::1]' ||
+    host.startsWith('127.') ||
+    host.startsWith('169.254.')
+  ) {
+    return false;
+  }
+
+  const allowedHosts = new Set(
+    [
+      'bore.pub',
+      '192.168.15.109',
+      (process.env.SSH_HOST || '').split(':')[0].toLowerCase(),
+      (process.env.SSH_HOST_VPN || '').split(':')[0].toLowerCase(),
+      (process.env.SSH_HOST_LAN || '').split(':')[0].toLowerCase(),
+    ].filter(Boolean)
+  );
+
+  if (allowedHosts.has(host)) return true;
+  if (host.endsWith('.trycloudflare.com')) return true;
+  if (host.endsWith('.ngrok-free.app') || host.endsWith('.ngrok.io')) return true;
+  if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+$/.test(host)) return true;
+
+  return false;
+}
 
 /**
  * Proxy reverso HTTPS nativo do Next.js para evitar bloqueios de Mixed Content (HTTPS -> HTTP),
- * pular tela de aviso do Ngrok e remover cabeçalhos restritivos de iframe (X-Frame-Options / CSP).
+ * pular tela de aviso do Ngrok e remover cabeçalhos restritivos de iframe (X-Frame-Options / CSP),
+ * com proteção anti-SSRF restrita aos túneis e hosts do servidor.
  */
 async function handleProxy(request) {
   try {
+    if (!checkRateLimit(request, 'PROXY /api/proxy')) {
+      return NextResponse.json({ ok: false, error: 'Limite de requisições excedido.' }, { status: 429 });
+    }
+
     const { searchParams } = new URL(request.url);
     const target = searchParams.get('url');
     if (!target || !target.startsWith('http')) {
       return NextResponse.json({ ok: false, error: 'URL alvo inválida.' }, { status: 400 });
     }
 
-    const targetUrl = new URL(target);
+    let targetUrl;
+    try {
+      targetUrl = new URL(target);
+    } catch {
+      return NextResponse.json({ ok: false, error: 'URL alvo malformada.' }, { status: 400 });
+    }
+
+    if (!isAllowedProxyTarget(targetUrl)) {
+      await logWarn('Blocked unauthorized proxy target (SSRF protection)', {
+        route: '/api/proxy',
+        blockedHost: targetUrl.hostname,
+        ip: getClientIp(request),
+        deviceId: getClientDeviceId(request),
+      });
+      return NextResponse.json(
+        { ok: false, error: 'Host de destino não autorizado pelo proxy de segurança.' },
+        { status: 403 }
+      );
+    }
+
     const headers = new Headers();
     request.headers.forEach((value, key) => {
       const k = key.toLowerCase();
-      if (!['host', 'origin', 'referer', 'connection', 'accept-encoding'].includes(k)) {
+      if (!['host', 'origin', 'referer', 'connection', 'accept-encoding', 'authorization'].includes(k)) {
         headers.set(key, value);
       }
     });
@@ -48,6 +109,8 @@ async function handleProxy(request) {
     outHeaders.set('Access-Control-Allow-Origin', '*');
     outHeaders.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
     outHeaders.set('Access-Control-Allow-Headers', '*');
+    outHeaders.set('X-Content-Type-Options', 'nosniff');
+    outHeaders.set('Content-Security-Policy', "frame-ancestors 'self'");
 
     const contentType = upstream.headers.get('content-type') || '';
     if (contentType.includes('text/html')) {
@@ -70,7 +133,7 @@ async function handleProxy(request) {
       headers: outHeaders,
     });
   } catch (err) {
-    await logError(err, { route: ' /api/proxy' });
+    await logError(err, { route: '/api/proxy' });
     return NextResponse.json({ ok: false, error: err.message }, { status: 502 });
   }
 }

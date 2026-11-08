@@ -59,6 +59,9 @@ export async function POST(request) {
       }
 
       const result = await runSSH(cmd);
+      if (result.code !== 0) {
+        throw new Error(result.stderr || result.stdout || `Falha ao executar ${action} em ${service}`);
+      }
 
       if (service === 'srv_onlyoffice' && action === 'start') {
         await runSSH(

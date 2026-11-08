@@ -51,6 +51,9 @@ export async function POST(request) {
     }
 
     const { username, password, role } = body;
+    if (caller.role && caller.role !== 'admin') {
+      return Response.json({ ok: false, error: 'Apenas administradores podem gerenciar usuários' }, { status: 403 });
+    }
     if (!username || !password) {
       return Response.json({ ok: false, error: 'Usuário e senha são obrigatórios' }, { status: 400 });
     }
@@ -110,6 +113,10 @@ export async function DELETE(request) {
 
     if (!username) {
       return Response.json({ ok: false, error: 'Parâmetro username ou sessionId é obrigatório' }, { status: 400 });
+    }
+
+    if (caller.role && caller.role !== 'admin') {
+      return Response.json({ ok: false, error: 'Apenas administradores podem excluir usuários' }, { status: 403 });
     }
 
     if (username === 'admin') {

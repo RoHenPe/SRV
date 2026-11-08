@@ -1,5 +1,5 @@
 import { validateToken, extractToken, getUsers, touchDeviceSession, AuthError } from '@/lib/auth';
-import { getClientIp, getClientDeviceId, getClientDeviceName } from '@/lib/rateLimit';
+import { getClientIp, getClientDeviceId, getClientDeviceName, checkRateLimit } from '@/lib/rateLimit';
 import { logAction, logRequest } from '@/lib/logger';
 
 export async function POST(request) {
@@ -10,6 +10,12 @@ export async function POST(request) {
   const userAgent = request.headers?.get?.('user-agent') || '';
 
   try {
+    if (!checkRateLimit(request, 'POST /api/auth/validate')) {
+      return Response.json(
+        { ok: false, error: 'Muitas tentativas de autenticação. Aguarde alguns segundos.' },
+        { status: 429 }
+      );
+    }
     let body = {};
     try {
       body = await request.json();
