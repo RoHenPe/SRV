@@ -495,7 +495,14 @@ export default function DashboardPage() {
   };
 
   if (!authValid) {
-    return null;
+    return (
+      <div className="min-h-screen bg-[var(--md-sys-color-background)] text-[var(--md-sys-color-on-background)] flex items-center justify-center p-4">
+        <div className="flex items-center gap-2 text-xs text-[var(--md-sys-color-on-surface-variant)]">
+          <span className="material-symbols-outlined animate-spin text-base">autorenew</span>
+          <span>Carregando...</span>
+        </div>
+      </div>
+    );
   }
 
   const isOnline = serverStatus?.online;
