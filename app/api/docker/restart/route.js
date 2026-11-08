@@ -7,7 +7,7 @@ export async function POST(request) {
       const { name } = await request.json();
       if (!name) throw new Error('Campo "name" é obrigatório.');
 
-      const result = await runSSH(`sudo docker restart ${name}`);
+      const result = await runSSH(`docker restart ${name}`);
       return { message: `Container "${name}" reiniciado.`, output: result.stdout };
     },
     request,

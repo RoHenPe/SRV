@@ -7,7 +7,7 @@ export async function POST(request) {
       const { name } = await request.json();
       if (!name) throw new Error('Campo "name" é obrigatório.');
 
-      const result = await runSSH(`sudo docker stop ${name}`);
+      const result = await runSSH(`docker stop ${name}`);
       return { message: `Container "${name}" parado.`, output: result.stdout };
     },
     request,

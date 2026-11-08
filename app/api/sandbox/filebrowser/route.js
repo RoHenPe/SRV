@@ -4,8 +4,8 @@ export async function POST(request) {
   return apiHandler(
     async () => {
       const startCmd =
-        'sudo docker start srv_filebrowser 2>/dev/null || ' +
-        'sudo docker run -d --name srv_filebrowser -p 8089:80 -v /home/rodrigo:/srv --entrypoint sh filebrowser/filebrowser:latest -c "if [ ! -f /database/filebrowser.db ]; then filebrowser config init -d /database/filebrowser.db && filebrowser config set --auth.method=noauth -d /database/filebrowser.db && filebrowser users add admin admin12345678 --perm.admin -d /database/filebrowser.db; fi && exec filebrowser -d /database/filebrowser.db -r /srv -a 0.0.0.0 -p 80"';
+        'docker start srv_filebrowser 2>/dev/null || ' +
+        'docker run -d --name srv_filebrowser -p 8089:80 -v /home/rodrigo:/srv --entrypoint sh filebrowser/filebrowser:latest -c "if [ ! -f /database/filebrowser.db ]; then filebrowser config init -d /database/filebrowser.db && filebrowser config set --auth.method=noauth -d /database/filebrowser.db && filebrowser users add admin admin12345678 --perm.admin -d /database/filebrowser.db; fi && exec filebrowser -d /database/filebrowser.db -r /srv -a 0.0.0.0 -p 80"';
 
       await runAndEnsurePort({
         startCmd,

@@ -37,23 +37,23 @@ export async function POST(request) {
         if (spec.container) {
           if (action === 'start') {
             cmd = spec.composeDir
-              ? `sudo docker start ${spec.container} 2>/dev/null || (cd ${spec.composeDir} && sudo docker compose up -d)`
-              : `sudo docker start ${spec.container}`;
+              ? `docker start ${spec.container} 2>/dev/null || (cd ${spec.composeDir} && docker compose up -d)`
+              : `docker start ${spec.container}`;
           } else if (action === 'stop') {
-            cmd = `sudo docker stop ${spec.container}`;
+            cmd = `docker stop ${spec.container}`;
           } else if (action === 'restart') {
-            cmd = `sudo docker restart ${spec.container}`;
+            cmd = `docker restart ${spec.container}`;
           }
         } else if (spec.composeDir) {
           cmd =
             action === 'start'
-              ? `cd ${spec.composeDir} && sudo docker compose up -d`
+              ? `cd ${spec.composeDir} && docker compose up -d`
               : action === 'stop'
-              ? `cd ${spec.composeDir} && sudo docker compose stop`
-              : `cd ${spec.composeDir} && sudo docker compose restart`;
+              ? `cd ${spec.composeDir} && docker compose stop`
+              : `cd ${spec.composeDir} && docker compose restart`;
         }
       } else if (/^[a-zA-Z0-9_.-]+$/.test(service)) {
-        cmd = `sudo docker ${action} ${service}`;
+        cmd = `docker ${action} ${service}`;
       } else {
         throw new Error('Serviço inválido.');
       }
@@ -62,7 +62,7 @@ export async function POST(request) {
 
       if (service === 'srv_onlyoffice' && action === 'start') {
         await runSSH(
-          'sudo docker exec srv_onlyoffice sh -c \'grep -q documentserver /etc/hosts || echo "127.0.0.1 documentserver" >> /etc/hosts; grep -q "8086" /etc/onlyoffice/documentserver/nginx/ds.conf || (sed -i "s/listen 0.0.0.0:80;/listen 0.0.0.0:80;\\n  listen 0.0.0.0:8086;/" /etc/onlyoffice/documentserver/nginx/ds.conf && nginx -s reload)\' 2>/dev/null || true'
+          'docker exec srv_onlyoffice sh -c \'grep -q documentserver /etc/hosts || echo "127.0.0.1 documentserver" >> /etc/hosts; grep -q "8086" /etc/onlyoffice/documentserver/nginx/ds.conf || (sed -i "s/listen 0.0.0.0:80;/listen 0.0.0.0:80;\\n  listen 0.0.0.0:8086;/" /etc/onlyoffice/documentserver/nginx/ds.conf && nginx -s reload)\' 2>/dev/null || true'
         );
       }
 

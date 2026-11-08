@@ -6,9 +6,9 @@ export async function POST(request) {
     async () => {
       // 1. Inicia Webtop se não estiver rodando
       await runSSH(
-        "if ! sudo docker ps --format '{{.Names}}' | grep -q '^srv_webtop_sandbox$'; then " +
-        "sudo docker rm -f srv_webtop_sandbox >/dev/null 2>&1 || true; " +
-        "sudo docker run -d --name=srv_webtop_sandbox -p 3000:3000 -p 3001:3001 -p 9222:9222 " +
+        "if ! docker ps --format '{{.Names}}' | grep -q '^srv_webtop_sandbox$'; then " +
+        "docker rm -f srv_webtop_sandbox >/dev/null 2>&1 || true; " +
+        "docker run -d --name=srv_webtop_sandbox -p 3000:3000 -p 3001:3001 -p 9222:9222 " +
         "-v /home/rodrigo/webtop_config:/config -v /home/rodrigo:/storage --shm-size=2gb " +
         "srv-webtop-antigravity:latest; " +
         "sleep 5; " +
@@ -17,10 +17,10 @@ export async function POST(request) {
 
       // 2. Copia o redirect.html e inicia o server HTTP Python se não estiver rodando
       await runSSH(
-        "sudo docker cp /home/rodrigo/redirect.html srv_webtop_sandbox:/config/redirect.html && " +
-        "sudo docker exec srv_webtop_sandbox chown abc:abc /config/redirect.html && " +
-        "if ! sudo docker exec srv_webtop_sandbox ps aux | grep -q '[m].server 8085'; then " +
-        "sudo docker exec -d -u abc srv_webtop_sandbox python3 -m http.server 8085 --directory /config; " +
+        "docker cp /home/rodrigo/redirect.html srv_webtop_sandbox:/config/redirect.html && " +
+        "docker exec srv_webtop_sandbox chown abc:abc /config/redirect.html && " +
+        "if ! docker exec srv_webtop_sandbox ps aux | grep -q '[m].server 8085'; then " +
+        "docker exec -d -u abc srv_webtop_sandbox python3 -m http.server 8085 --directory /config; " +
         "fi"
       );
 

@@ -14,7 +14,7 @@ export async function GET(request) {
 
       // 2. Verifica se a VM de testes está rodando
       const vmCheck = await runSSH(
-        'sudo docker ps --filter name=win10_teste --format "{{.Status}}" 2>/dev/null || true'
+        'docker ps --filter name=win10_teste --format "{{.Status}}" 2>/dev/null || true'
       );
       const vmRunning = (vmCheck.stdout || '').toLowerCase().includes('up');
 
@@ -71,10 +71,10 @@ export async function POST(request) {
       let message = '';
 
       if (action === 'start_vm') {
-        cmd = 'cd ~/win10-deploy && sudo docker compose up -d';
+        cmd = 'cd ~/win10-deploy && docker compose up -d';
         message = 'Comando para iniciar a VM Windows 10 enviado.';
       } else if (action === 'stop_vm') {
-        cmd = 'cd ~/win10-deploy && sudo docker compose down';
+        cmd = 'cd ~/win10-deploy && docker compose down';
         message = 'Comando para parar a VM Windows 10 enviado.';
       } else {
         throw new Error('Ação inválida.');

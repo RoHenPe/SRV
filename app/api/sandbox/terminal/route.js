@@ -4,8 +4,8 @@ export async function POST(request) {
   return apiHandler(
     async () => {
       const startCmd =
-        'sudo docker start srv_terminal_sandbox 2>/dev/null || ' +
-        'sudo docker run -d --name srv_terminal_sandbox --network host -v /home/rodrigo/.ssh:/home/rodrigo/.ssh:ro -v /home/rodrigo/.ssh:/root/.ssh:ro srv-dashboard-srv-dashboard:latest ttyd -W -p 7682 ssh -o StrictHostKeyChecking=no rodrigo@127.0.0.1';
+        'docker start srv_terminal_sandbox 2>/dev/null || ' +
+        'docker run -d --name srv_terminal_sandbox --network host -v /home/rodrigo/.ssh:/home/rodrigo/.ssh:ro -v /home/rodrigo/.ssh:/root/.ssh:ro srv-dashboard-srv-dashboard:latest ttyd -W -p 7682 ssh -o StrictHostKeyChecking=no rodrigo@127.0.0.1';
 
       await runAndEnsurePort({
         startCmd,

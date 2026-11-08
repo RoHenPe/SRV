@@ -4,11 +4,11 @@ export async function POST(request) {
   return apiHandler(
     async () => {
       const startCmd =
-        'sudo docker start srv_nvim_sandbox 2>/dev/null || (' +
-        'if sudo docker image inspect srv-nvim:latest >/dev/null 2>&1; then ' +
-        '  sudo docker run -d --name srv_nvim_sandbox -p 7683:7681 -v /home/rodrigo:/root/workspace srv-nvim:latest ttyd -W -p 7681 nvim; ' +
+        'docker start srv_nvim_sandbox 2>/dev/null || (' +
+        'if docker image inspect srv-nvim:latest >/dev/null 2>&1; then ' +
+        '  docker run -d --name srv_nvim_sandbox -p 7683:7681 -v /home/rodrigo:/root/workspace srv-nvim:latest ttyd -W -p 7681 nvim; ' +
         'else ' +
-        '  sudo docker run -d --name srv_nvim_sandbox -p 7683:7681 alpine:latest sh -c "apk update && apk add neovim git ttyd && ttyd -W -p 7681 nvim"; ' +
+        '  docker run -d --name srv_nvim_sandbox -p 7683:7681 alpine:latest sh -c "apk update && apk add neovim git ttyd && ttyd -W -p 7681 nvim"; ' +
         'fi)';
 
       await runAndEnsurePort({

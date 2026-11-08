@@ -4,8 +4,8 @@ export async function POST(request) {
   return apiHandler(
     async () => {
       const startCmd =
-        'sudo docker start srv_vscode_sandbox 2>/dev/null || ' +
-        'sudo docker run -d -p 8443:3000 -v /home/rodrigo:/home/workspace:cached --name srv_vscode_sandbox gitpod/openvscode-server:latest --without-connection-token';
+        'docker start srv_vscode_sandbox 2>/dev/null || ' +
+        'docker run -d -p 8443:3000 -v /home/rodrigo:/home/workspace:cached --name srv_vscode_sandbox gitpod/openvscode-server:latest --without-connection-token';
 
       await runAndEnsurePort({
         startCmd,

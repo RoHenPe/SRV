@@ -5,7 +5,7 @@ export async function POST(request) {
   return apiHandler(
     async () => {
       const cleanCmd = `
-        echo "=== Limpando Docker ===" && (sudo docker system prune -f 2>&1 || true) &&
+        echo "=== Limpando Docker ===" && (docker system prune -f 2>&1 || true) &&
         echo "=== Limpando Cache APT ===" && (sudo apt-get clean 2>&1 || true) &&
         echo "=== Limpando Logs /tmp ===" && (rm -f /tmp/bore_*.log /tmp/ngrok.tgz /tmp/*.tmp 2>/dev/null || true) &&
         echo "=== Otimizando Journal ===" && (sudo journalctl --vacuum-size=50M 2>&1 || true) &&

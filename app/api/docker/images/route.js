@@ -4,7 +4,7 @@ import { runSSH, apiHandler } from '@/lib/ssh';
 export async function GET(request) {
   return apiHandler(
     async () => {
-      const result = await runSSH("sudo docker images --format '{{json .}}'");
+      const result = await runSSH("docker images --format '{{json .}}'");
       const images = result.stdout
         .split('\n')
         .filter(Boolean)

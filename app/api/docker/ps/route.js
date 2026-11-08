@@ -4,7 +4,7 @@ import { runSSH, apiHandler } from '@/lib/ssh';
 export async function GET(request) {
   return apiHandler(
     async () => {
-      const result = await runSSH("sudo docker ps --format '{{json .}}'");
+      const result = await runSSH("docker ps --format '{{json .}}'");
       const containers = result.stdout
         .split('\n')
         .filter(Boolean)

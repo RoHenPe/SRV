@@ -6,7 +6,7 @@ export async function POST(request) {
     async () => {
       const { name } = await request.json();
       if (!name) throw new Error('Campo "name" é obrigatório.');
-      const result = await runSSH(`sudo docker rm -f ${name}`);
+      const result = await runSSH(`docker rm -f ${name}`);
       return { message: `Container "${name}" removido.`, output: result.stdout };
     },
     request,

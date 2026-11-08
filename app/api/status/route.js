@@ -68,7 +68,7 @@ function parseStatus(stdout) {
 
 async function fetchServerStatus() {
   const combinedCmd =
-    'uptime && free -m && df -h && echo "===DOCKER===" && (sudo docker ps --format "{{.Names}}" || true) && echo "===TTYDS===" && (pgrep -f "ttyd -W -p 7685" || true) && echo "===TTYD_TERM===" && (pgrep -f "ttyd -W -p 7682" || true)';
+    'uptime && free -m && df -h && echo "===DOCKER===" && (docker ps --format "{{.Names}}" || true) && echo "===TTYDS===" && (pgrep -f "ttyd -W -p 7685" || true) && echo "===TTYD_TERM===" && (pgrep -f "ttyd -W -p 7682" || true)';
   const result = await runSSH(combinedCmd);
 
   const parts = result.stdout.split(/===[A-Z0-9_]+===/);

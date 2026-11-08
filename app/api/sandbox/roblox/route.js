@@ -4,8 +4,8 @@ export async function POST(request) {
   return apiHandler(
     async () => {
       const startCmd =
-        'sudo docker start srv_steam_sandbox 2>/dev/null || ' +
-        'sudo docker run -d --privileged --name srv_steam_sandbox -p 8083:8083 -p 5900:5900 -v /dev:/dev josh5/steam-headless:latest';
+        'docker start srv_steam_sandbox 2>/dev/null || ' +
+        'docker run -d --privileged --name srv_steam_sandbox -p 8083:8083 -p 5900:5900 -v /dev:/dev josh5/steam-headless:latest';
 
       await runAndEnsurePort({
         startCmd,
@@ -15,8 +15,8 @@ export async function POST(request) {
       });
 
       const launchRobloxCmd = `
-        sudo docker exec -u root srv_steam_sandbox sh -c 'chmod 666 /dev/dri/card* /dev/dri/render* /dev/uinput /dev/input/* 2>/dev/null || true'
-        sudo docker exec -u default -e DISPLAY=:55 srv_steam_sandbox bash -c '
+        docker exec -u root srv_steam_sandbox sh -c 'chmod 666 /dev/dri/card* /dev/dri/render* /dev/uinput /dev/input/* 2>/dev/null || true'
+        docker exec -u default -e DISPLAY=:55 srv_steam_sandbox bash -c '
           xrandr --newmode "1920x1080_60" 173.00 1920 2048 2248 2576 1080 1083 1088 1120 -hsync +vsync 2>/dev/null || true
           xrandr --addmode VIRTUAL1 "1920x1080_60" 2>/dev/null || true
           xrandr --output VIRTUAL1 --mode "1920x1080_60" 2>/dev/null || true

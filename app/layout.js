@@ -26,7 +26,15 @@ export default function RootLayout({ children }) {
           dangerouslySetInnerHTML={{
             __html: `
               (function(){
+                if (typeof globalThis === 'undefined') {
+                  window.globalThis = window;
+                }
                 if (typeof window === 'undefined') return;
+                if (!window.queueMicrotask) {
+                  window.queueMicrotask = function(cb) {
+                    Promise.resolve().then(cb);
+                  };
+                }
                 if (!Object.hasOwn) {
                   Object.hasOwn = function(obj, prop) {
                     return Object.prototype.hasOwnProperty.call(obj, prop);

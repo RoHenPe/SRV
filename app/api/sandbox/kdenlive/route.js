@@ -4,8 +4,8 @@ export async function POST(request) {
   return apiHandler(
     async () => {
       const startCmd =
-        'sudo docker start srv_kdenlive_sandbox 2>/dev/null || ' +
-        'sudo docker run -d --name=srv_kdenlive_sandbox -e PASSWORD="" -p 3005:3000 -p 3006:3001 -v /home/rodrigo/kdenlive_config:/config -v /home/rodrigo:/storage --shm-size=2gb lscr.io/linuxserver/kdenlive:latest';
+        'docker start srv_kdenlive_sandbox 2>/dev/null || ' +
+        'docker run -d --name=srv_kdenlive_sandbox -p 3005:3000 -p 3006:3001 -v /home/rodrigo/kdenlive_config:/config -v /home/rodrigo:/storage --shm-size=2gb lscr.io/linuxserver/kdenlive:latest';
 
       await runAndEnsurePort({
         startCmd,
