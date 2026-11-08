@@ -81,11 +81,11 @@ async function fetchServerStatus() {
     ? dockerStdout.split('\n').map((name) => name.trim()).filter(Boolean)
     : [];
 
-  if (ttydStdout.trim()) {
+  if (ttydStdout.trim() && !runningContainers.includes('srv_ag_sandbox')) {
     runningContainers.push('srv_ag_sandbox');
   }
 
-  if (ttydTermStdout.trim()) {
+  if (ttydTermStdout.trim() && !runningContainers.includes('srv_terminal_sandbox')) {
     runningContainers.push('srv_terminal_sandbox');
   }
 

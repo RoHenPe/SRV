@@ -15,7 +15,13 @@ export async function POST(request) {
       });
 
       const focusSteamCmd = `
-        docker exec -u root srv_steam_sandbox sh -c 'chmod 666 /dev/dri/card* /dev/dri/render* /dev/uinput /dev/input/* 2>/dev/null || true'
+        docker exec -u root srv_steam_sandbox sh -c '
+          chmod 666 /dev/dri/card* /dev/dri/render* /dev/uinput /dev/input/* 2>/dev/null || true
+          ln -sfn iris_dri.so /usr/lib/x86_64-linux-gnu/dri/i965_dri.so 2>/dev/null || true
+          if ! grep -q "VirtualHeads" /etc/X11/xorg.conf 2>/dev/null; then
+            cp /tmp/xorg-intel.conf /etc/X11/xorg.conf 2>/dev/null || true
+          fi
+        '
         docker exec -u default -e DISPLAY=:55 srv_steam_sandbox bash -c '
           xrandr --newmode "1920x1080_60" 173.00 1920 2048 2248 2576 1080 1083 1088 1120 -hsync +vsync 2>/dev/null || true
           xrandr --addmode VIRTUAL1 "1920x1080_60" 2>/dev/null || true
@@ -23,7 +29,7 @@ export async function POST(request) {
           wmctrl -c "Display" 2>/dev/null || true
           wmctrl -r "Sober" -b add,hidden 2>/dev/null || true
           if ! pgrep -f "/ubuntu12_32/steam" >/dev/null 2>&1; then
-            nohup steam </dev/null >/tmp/steam_launch.log 2>&1 &
+            nohup /usr/games/steam -nominidumps -nobreakpad </dev/null >/tmp/steam_launch.log 2>&1 &
           fi
           wmctrl -r "Steam" -b remove,hidden 2>/dev/null || true
           wmctrl -a "Steam" 2>/dev/null || true

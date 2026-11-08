@@ -15,19 +15,27 @@ export async function POST(request) {
       });
 
       const launchRobloxCmd = `
-        docker exec -u root srv_steam_sandbox sh -c 'chmod 666 /dev/dri/card* /dev/dri/render* /dev/uinput /dev/input/* 2>/dev/null || true'
+        docker exec -u root srv_steam_sandbox sh -c '
+          chmod 666 /dev/dri/card* /dev/dri/render* /dev/uinput /dev/input/* 2>/dev/null || true
+          ln -sfn iris_dri.so /usr/lib/x86_64-linux-gnu/dri/i965_dri.so 2>/dev/null || true
+          if ! grep -q "VirtualHeads" /etc/X11/xorg.conf 2>/dev/null; then
+            cp /tmp/xorg-intel.conf /etc/X11/xorg.conf 2>/dev/null || true
+          fi
+        '
         docker exec -u default -e DISPLAY=:55 srv_steam_sandbox bash -c '
           xrandr --newmode "1920x1080_60" 173.00 1920 2048 2248 2576 1080 1083 1088 1120 -hsync +vsync 2>/dev/null || true
           xrandr --addmode VIRTUAL1 "1920x1080_60" 2>/dev/null || true
           xrandr --output VIRTUAL1 --mode "1920x1080_60" 2>/dev/null || true
           wmctrl -c "Display" 2>/dev/null || true
-          if ! pgrep -x sober >/dev/null 2>&1; then
-            nohup flatpak run --device=all org.vinegarhq.Sober </dev/null >/tmp/sober.log 2>&1 &
-            for i in 1 2 3 4 5 6; do
-              sleep 0.5
-              if wmctrl -l 2>/dev/null | grep -qi "Sober"; then break; fi
-            done
-          fi
+        ' >/dev/null 2>&1 || true
+        if ! docker exec -u default srv_steam_sandbox pgrep -x sober >/dev/null 2>&1; then
+          docker exec -d -u default -e DISPLAY=:55 srv_steam_sandbox bash -c "flatpak run --device=all org.vinegarhq.Sober >/tmp/sober.log 2>&1"
+          for i in 1 2 3 4 5 6; do
+            sleep 0.5
+            if docker exec -u default -e DISPLAY=:55 srv_steam_sandbox wmctrl -l 2>/dev/null | grep -qi "Sober"; then break; fi
+          done
+        fi
+        docker exec -u default -e DISPLAY=:55 srv_steam_sandbox bash -c '
           wmctrl -r "Sober" -b remove,hidden 2>/dev/null || true
           wmctrl -r "Sober" -b add,maximized_vert,maximized_horz 2>/dev/null || true
           wmctrl -a "Sober" 2>/dev/null || true
