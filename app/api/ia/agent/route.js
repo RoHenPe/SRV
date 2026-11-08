@@ -27,9 +27,9 @@ export async function POST(request) {
             interpreter ${isAutonomous ? '-y' : ''} --prompt "$PROMPT_TXT" </dev/null 2>&1
           else
             systemctl is-active --quiet ollama || sudo systemctl start ollama 2>/dev/null || true
-            MODEL_NAME=$(ollama list 2>/dev/null | awk 'NR>1 {print $1}' | head -n 1)
+            MODEL_NAME=$(ollama ps 2>/dev/null | awk 'NR>1 {print $1}' | head -n 1)
             MODEL_NAME=\${MODEL_NAME:-ia-core:latest}
-            python3 -c "import json, urllib.request, base64; p = base64.b64decode('${b64Prompt}').decode('utf-8'); req = urllib.request.Request('http://127.0.0.1:11434/api/generate', data=json.dumps({'model': '$MODEL_NAME', 'prompt': p, 'stream': False}).encode('utf-8'), headers={'Content-Type': 'application/json'}); print(json.loads(urllib.request.urlopen(req, timeout=120).read().decode('utf-8')).get('response', ''))" 2>&1
+            python3 -c "import json, urllib.request, base64; p = base64.b64decode('${b64Prompt}').decode('utf-8'); req = urllib.request.Request('http://127.0.0.1:11434/api/generate', data=json.dumps({'model': '$MODEL_NAME', 'prompt': p, 'stream': False, 'keep_alive': '24h', 'options': {'num_ctx': 1024, 'num_predict': 256}}).encode('utf-8'), headers={'Content-Type': 'application/json'}); print(json.loads(urllib.request.urlopen(req, timeout=35).read().decode('utf-8')).get('response', ''))" 2>&1
           fi
         `;
       } else if (engine === 'multi-agent' || engine === 'crewai') {
@@ -43,29 +43,27 @@ export async function POST(request) {
             agy ${isAutonomous ? '--dangerously-skip-permissions' : '--mode plan'} --print="$PROMPT_TXT" </dev/null 2>&1
           else
             systemctl is-active --quiet ollama || sudo systemctl start ollama 2>/dev/null || true
-            MODEL_NAME=$(ollama list 2>/dev/null | awk 'NR>1 {print $1}' | head -n 1)
+            MODEL_NAME=$(ollama ps 2>/dev/null | awk 'NR>1 {print $1}' | head -n 1)
             MODEL_NAME=\${MODEL_NAME:-ia-core:latest}
-            python3 -c "import json, urllib.request, base64; p = base64.b64decode('${b64Prompt}').decode('utf-8'); req = urllib.request.Request('http://127.0.0.1:11434/api/generate', data=json.dumps({'model': '$MODEL_NAME', 'prompt': p, 'stream': False}).encode('utf-8'), headers={'Content-Type': 'application/json'}); print(json.loads(urllib.request.urlopen(req, timeout=120).read().decode('utf-8')).get('response', ''))" 2>&1
+            python3 -c "import json, urllib.request, base64; p = base64.b64decode('${b64Prompt}').decode('utf-8'); req = urllib.request.Request('http://127.0.0.1:11434/api/generate', data=json.dumps({'model': '$MODEL_NAME', 'prompt': p, 'stream': False, 'keep_alive': '24h', 'options': {'num_ctx': 1024, 'num_predict': 256}}).encode('utf-8'), headers={'Content-Type': 'application/json'}); print(json.loads(urllib.request.urlopen(req, timeout=35).read().decode('utf-8')).get('response', ''))" 2>&1
           fi
         `;
       } else if (engine === 'local-llm' || engine === 'gemma4') {
         cmd = `
           systemctl is-active --quiet ollama || sudo systemctl start ollama 2>/dev/null || true
-          MODEL_NAME=$(ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -iE 'gemma|ia-core|jarvis|qwen' | head -n 1)
+          MODEL_NAME=$(ollama ps 2>/dev/null | awk 'NR>1 {print $1}' | head -n 1)
           if [ -z "$MODEL_NAME" ]; then
-            MODEL_NAME=$(ollama list 2>/dev/null | awk 'NR>1 {print $1}' | head -n 1)
+            MODEL_NAME=$(ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -iE '^ia-core|^qwen2.5-coder:3b|^gemma' | head -n 1)
           fi
           MODEL_NAME=\${MODEL_NAME:-ia-core:latest}
-          python3 -c "import json, urllib.request, base64; p = base64.b64decode('${b64Prompt}').decode('utf-8'); req = urllib.request.Request('http://127.0.0.1:11434/api/generate', data=json.dumps({'model': '$MODEL_NAME', 'prompt': p, 'stream': False}).encode('utf-8'), headers={'Content-Type': 'application/json'}); print(json.loads(urllib.request.urlopen(req, timeout=120).read().decode('utf-8')).get('response', ''))" 2>&1
+          python3 -c "import json, urllib.request, base64; p = base64.b64decode('${b64Prompt}').decode('utf-8'); req = urllib.request.Request('http://127.0.0.1:11434/api/generate', data=json.dumps({'model': '$MODEL_NAME', 'prompt': p, 'stream': False, 'keep_alive': '24h', 'options': {'num_ctx': 1024, 'num_predict': 256}}).encode('utf-8'), headers={'Content-Type': 'application/json'}); print(json.loads(urllib.request.urlopen(req, timeout=35).read().decode('utf-8')).get('response', ''))" 2>&1
         `;
       } else {
         cmd = `
           systemctl is-active --quiet ollama || sudo systemctl start ollama 2>/dev/null || true
-          timeout 25 python3 -c "import base64, subprocess; p = base64.b64decode('${b64Prompt}').decode('utf-8'); args = ['/home/rodrigo/.local/bin/interpreter', '--prompt', p]; ${isAutonomous ? "args.insert(1, '-y'); " : ''}subprocess.run(args, stdin=subprocess.DEVNULL)" 2>&1 || (
-            MODEL_NAME=$(ollama list 2>/dev/null | awk 'NR>1 {print $1}' | head -n 1)
-            MODEL_NAME=\${MODEL_NAME:-ia-core:latest}
-            python3 -c "import json, urllib.request, base64; p = base64.b64decode('${b64Prompt}').decode('utf-8'); req = urllib.request.Request('http://127.0.0.1:11434/api/generate', data=json.dumps({'model': '$MODEL_NAME', 'prompt': p, 'stream': False}).encode('utf-8'), headers={'Content-Type': 'application/json'}); print(json.loads(urllib.request.urlopen(req, timeout=40).read().decode('utf-8')).get('response', ''))" 2>&1
-          )
+          MODEL_NAME=$(ollama ps 2>/dev/null | awk 'NR>1 {print $1}' | head -n 1)
+          MODEL_NAME=\${MODEL_NAME:-ia-core:latest}
+          python3 -c "import json, urllib.request, base64; p = base64.b64decode('${b64Prompt}').decode('utf-8'); sys_p = 'Você é o Open Interpreter do servidor Linux SRV (Ubuntu/Docker). Responda de forma objetiva e forneça os comandos ou diagnóstico exato.'; req = urllib.request.Request('http://127.0.0.1:11434/api/generate', data=json.dumps({'model': '$MODEL_NAME', 'system': sys_p, 'prompt': p, 'stream': False, 'keep_alive': '24h', 'options': {'num_ctx': 1024, 'num_predict': 256}}).encode('utf-8'), headers={'Content-Type': 'application/json'}); print(json.loads(urllib.request.urlopen(req, timeout=35).read().decode('utf-8')).get('response', ''))" 2>&1
         `;
       }
 

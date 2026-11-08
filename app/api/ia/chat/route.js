@@ -87,6 +87,11 @@ export async function POST(request) {
         model,
         messages: enrichedMessages,
         stream: false,
+        keep_alive: '24h',
+        options: {
+          num_ctx: 1024,
+          num_predict: 384,
+        },
       });
 
       const b64Payload = Buffer.from(jsonPayload).toString('base64');
