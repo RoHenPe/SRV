@@ -12,7 +12,7 @@ export async function POST(request) {
         throw new Error('Campo "name" inválido ou ausente.');
       }
 
-      const result = await runSSH(`docker stop ${name}`);
+      const result = await runSSH(`docker unpause ${name} >/dev/null 2>&1 || true; docker stop ${name}`);
       if (result.code !== 0) {
         throw new Error(result.stderr || result.stdout || `Falha ao parar container ${name}`);
       }

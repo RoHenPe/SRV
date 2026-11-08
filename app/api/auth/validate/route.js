@@ -1,6 +1,7 @@
 import { validateToken, extractToken, getUsers, touchDeviceSession, AuthError } from '@/lib/auth';
 import { getClientIp, getClientDeviceId, getClientDeviceName, checkRateLimit } from '@/lib/rateLimit';
 import { logAction, logRequest } from '@/lib/logger';
+import { classifyError, recordErrorFlow } from '@/lib/errorFlow';
 
 export async function POST(request) {
   const startTime = Date.now();
@@ -121,14 +122,38 @@ export async function POST(request) {
       deviceId: resolvedDeviceId,
     });
   } catch (err) {
+    const responseTime = Date.now() - startTime;
     const status = err instanceof AuthError ? err.status : 500;
-    await logRequest('POST', '/api/auth/validate', 'anonymous', status, Date.now() - startTime, err, {
+    const diagnosis = classifyError(err, {
+      route: 'POST /api/auth/validate',
+      username: 'anonymous',
+      deviceId,
+      deviceName,
+      clientIp: ip,
+      responseTime,
+    });
+    await recordErrorFlow({
+      diagnosis,
+      err,
+      context: {
+        route: 'POST /api/auth/validate',
+        username: 'anonymous',
+        deviceId,
+        deviceName,
+        clientIp: ip,
+        responseTime,
+      },
+      selfHealed: false,
+    });
+    await logRequest('POST', '/api/auth/validate', 'anonymous', status, responseTime, err, {
+      errorId: diagnosis.errorId,
+      category: diagnosis.category,
       deviceId,
       deviceName,
       ip,
     });
     return Response.json(
-      { ok: false, error: err.message },
+      { ok: false, error: err.message, errorId: diagnosis.errorId, category: diagnosis.category },
       { status }
     );
   }

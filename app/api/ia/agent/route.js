@@ -61,11 +61,15 @@ export async function POST(request) {
       } else {
         cmd = `
           systemctl is-active --quiet ollama || sudo systemctl start ollama 2>/dev/null || true
-          python3 -c "import base64, subprocess; p = base64.b64decode('${b64Prompt}').decode('utf-8'); args = ['/home/rodrigo/.local/bin/interpreter', '--prompt', p]; ${isAutonomous ? "args.insert(1, '-y'); " : ''}subprocess.run(args, stdin=subprocess.DEVNULL)" 2>&1
+          timeout 25 python3 -c "import base64, subprocess; p = base64.b64decode('${b64Prompt}').decode('utf-8'); args = ['/home/rodrigo/.local/bin/interpreter', '--prompt', p]; ${isAutonomous ? "args.insert(1, '-y'); " : ''}subprocess.run(args, stdin=subprocess.DEVNULL)" 2>&1 || (
+            MODEL_NAME=$(ollama list 2>/dev/null | awk 'NR>1 {print $1}' | head -n 1)
+            MODEL_NAME=\${MODEL_NAME:-ia-core:latest}
+            python3 -c "import json, urllib.request, base64; p = base64.b64decode('${b64Prompt}').decode('utf-8'); req = urllib.request.Request('http://127.0.0.1:11434/api/generate', data=json.dumps({'model': '$MODEL_NAME', 'prompt': p, 'stream': False}).encode('utf-8'), headers={'Content-Type': 'application/json'}); print(json.loads(urllib.request.urlopen(req, timeout=40).read().decode('utf-8')).get('response', ''))" 2>&1
+          )
         `;
       }
 
-      const result = await runSSH(cmd, 30000);
+      const result = await runSSH(cmd, 45000);
       await logAction('automation.agent_exec', result.code === 0 ? 'success' : 'error', {
         engine,
         mode: isAutonomous ? 'autonomous' : 'supervised',

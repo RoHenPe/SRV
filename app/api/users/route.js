@@ -1,5 +1,25 @@
 import { requireAuth, getUsers, saveUsers, getActiveSessions, revokeDeviceSession, touchDeviceSession, AuthError } from '@/lib/auth';
 import { logAction } from '@/lib/logger';
+import { classifyError, recordErrorFlow } from '@/lib/errorFlow';
+import { getClientIp, getClientDeviceId, getClientDeviceName } from '@/lib/rateLimit';
+
+async function handleUsersError(err, request, routeName) {
+  const status = err instanceof AuthError ? err.status : 500;
+  const deviceId = getClientDeviceId(request);
+  const deviceName = getClientDeviceName(request);
+  const clientIp = getClientIp(request);
+  const diagnosis = classifyError(err, { route: routeName, deviceId, deviceName, clientIp });
+  await recordErrorFlow({
+    diagnosis,
+    err,
+    context: { route: routeName, deviceId, deviceName, clientIp },
+    selfHealed: false,
+  });
+  return Response.json(
+    { ok: false, error: err.message, errorId: diagnosis.errorId, category: diagnosis.category },
+    { status }
+  );
+}
 
 export async function GET(request) {
   try {
@@ -19,10 +39,7 @@ export async function GET(request) {
       currentDeviceId: caller.deviceId,
     });
   } catch (err) {
-    if (err instanceof AuthError) {
-      return Response.json({ ok: false, error: err.message }, { status: err.status });
-    }
-    return Response.json({ ok: false, error: err.message }, { status: 500 });
+    return handleUsersError(err, request, 'GET /api/users');
   }
 }
 
@@ -87,10 +104,7 @@ export async function POST(request) {
     });
     return Response.json({ ok: true, updated: isUpdate });
   } catch (err) {
-    if (err instanceof AuthError) {
-      return Response.json({ ok: false, error: err.message }, { status: err.status });
-    }
-    return Response.json({ ok: false, error: err.message }, { status: 500 });
+    return handleUsersError(err, request, 'POST /api/users');
   }
 }
 
@@ -133,9 +147,6 @@ export async function DELETE(request) {
     });
     return Response.json({ ok: true });
   } catch (err) {
-    if (err instanceof AuthError) {
-      return Response.json({ ok: false, error: err.message }, { status: err.status });
-    }
-    return Response.json({ ok: false, error: err.message }, { status: 500 });
+    return handleUsersError(err, request, 'DELETE /api/users');
   }
 }

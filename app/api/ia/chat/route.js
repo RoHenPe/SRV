@@ -94,7 +94,7 @@ export async function POST(request) {
       // Garante que o Ollama esteja ativo e executa via curl stdin
       const cmd = `(systemctl is-active --quiet ollama || sudo systemctl start ollama 2>/dev/null || true) && echo "${b64Payload}" | base64 -d | curl -s -X POST http://127.0.0.1:11434/api/chat -H "Content-Type: application/json" -d @-`;
       
-      const result = await runSSH(cmd);
+      const result = await runSSH(cmd, 45000);
       if (result.code !== 0) {
         throw new Error(`Erro ao conectar ao Ollama no servidor: ${result.stderr || result.stdout}`);
       }

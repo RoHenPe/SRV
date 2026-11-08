@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { logError, logWarn } from '@/lib/logger';
-import { getClientIp, getClientDeviceId, checkRateLimit } from '@/lib/rateLimit';
+import { logWarn } from '@/lib/logger';
+import { getClientIp, getClientDeviceId, getClientDeviceName, checkRateLimit } from '@/lib/rateLimit';
+import { classifyError, recordErrorFlow } from '@/lib/errorFlow';
 
 function isAllowedProxyTarget(targetUrl) {
   if (!targetUrl || !['http:', 'https:'].includes(targetUrl.protocol)) {
@@ -133,8 +134,20 @@ async function handleProxy(request) {
       headers: outHeaders,
     });
   } catch (err) {
-    await logError(err, { route: '/api/proxy' });
-    return NextResponse.json({ ok: false, error: err.message }, { status: 502 });
+    const deviceId = getClientDeviceId(request);
+    const deviceName = getClientDeviceName(request);
+    const clientIp = getClientIp(request);
+    const diagnosis = classifyError(err, { route: '/api/proxy', deviceId, deviceName, clientIp });
+    await recordErrorFlow({
+      diagnosis,
+      err,
+      context: { route: '/api/proxy', deviceId, deviceName, clientIp },
+      selfHealed: false,
+    });
+    return NextResponse.json(
+      { ok: false, error: err.message, errorId: diagnosis.errorId, category: diagnosis.category },
+      { status: 502 }
+    );
   }
 }
 
