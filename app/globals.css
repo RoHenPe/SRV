@@ -185,10 +185,3 @@ h1, h2, h3, .google-sans {
   text-shadow: none !important;
 }
 
-/* Smart TV D-pad / Remote Focus Support */
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
-  outline-offset: 2px;
-}
-
-
