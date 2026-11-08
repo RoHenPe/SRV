@@ -78,6 +78,15 @@ export default function RootLayout({ children }) {
                         var flat = css
                           .replace(/@layer\\s+[a-zA-Z0-9_.,\\s-]+;/g, '')
                           .replace(/@layer\\s+[a-zA-Z0-9_-]+\\s*\\{/g, '@media all {')
+                          .replace(/@supports\\s*\\(\\(\\(-webkit-hyphens:none\\)\\)[^\\{]+\\{/g, '@media all {')
+                          .replace(/--tw-leading:initial;/g, '')
+                          .replace(/--tw-font-weight:initial;/g, '')
+                          .replace(/--tw-tracking:initial;/g, '')
+                          .replace(/padding-inline:([^;\\}]+)/g, 'padding-left:$1;padding-right:$1')
+                          .replace(/padding-block:([^;\\}]+)/g, 'padding-top:$1;padding-bottom:$1')
+                          .replace(/margin-inline:([^;\\}]+)/g, 'margin-left:$1;margin-right:$1')
+                          .replace(/margin-block:([^;\\}]+)/g, 'margin-top:$1;margin-bottom:$1')
+                          .replace(/([\\{;])inset:0(px)?([;\\}])/g, '$1top:0;right:0;bottom:0;left:0$3')
                           .replace(/100dvh/g, '100vh');
                         var s = document.createElement('style');
                         s.textContent = flat;

@@ -49,46 +49,60 @@ function expandLogicalCss(css) {
   return out;
 }
 
-const staticDir = path.join(process.cwd(), '.next', 'static');
-const jsFiles = walkFiles(staticDir, '.js');
-const cssFiles = walkFiles(staticDir, '.css');
+export function runPostbuildCompat() {
+  const candidateDirs = [
+    path.join(process.cwd(), '.next', 'static'),
+    path.join(process.cwd(), '.vercel', 'output', 'static', '_next', 'static'),
+    '/vercel/output/static/_next/static',
+  ];
 
-let jsCount = 0;
-for (const file of jsFiles) {
-  try {
-    const code = fs.readFileSync(file, 'utf8');
-    const result = esbuild.transformSync(code, {
-      loader: 'js',
-      target: 'chrome58',
-      minify: true,
-    });
-    const finalJs = code.includes('__magic__.globalThis')
-      ? result.code
-      : `${POLYFILL_BANNER}\n${result.code}`;
-    fs.writeFileSync(file, finalJs, 'utf8');
-    jsCount++;
-  } catch (err) {
-    console.warn(`[postbuild-compat] Ignored JS ${path.basename(file)}: ${err.message}`);
+  let jsCount = 0;
+  let cssCount = 0;
+
+  for (const staticDir of candidateDirs) {
+    if (!fs.existsSync(staticDir)) continue;
+    const jsFiles = walkFiles(staticDir, '.js');
+    const cssFiles = walkFiles(staticDir, '.css');
+
+    for (const file of jsFiles) {
+      try {
+        const code = fs.readFileSync(file, 'utf8');
+        if (code.includes('__magic__.globalThis')) continue;
+        const result = esbuild.transformSync(code, {
+          loader: 'js',
+          target: 'chrome58',
+          minify: true,
+        });
+        const finalJs = `${POLYFILL_BANNER}\n${result.code}`;
+        fs.writeFileSync(file, finalJs, 'utf8');
+        jsCount++;
+      } catch (err) {
+        console.warn(`[postbuild-compat] Ignored JS ${path.basename(file)}: ${err.message}`);
+      }
+    }
+
+    for (const file of cssFiles) {
+      try {
+        const code = fs.readFileSync(file, 'utf8');
+        if (code.startsWith('/*srv-compat*/')) continue;
+        const expanded = expandLogicalCss(code);
+        const result = esbuild.transformSync(expanded, {
+          loader: 'css',
+          target: ['chrome53', 'safari11'],
+          minify: true,
+        });
+        const finalCss = `/*srv-compat*/${expandLogicalCss(result.code)}`;
+        fs.writeFileSync(file, finalCss, 'utf8');
+        cssCount++;
+      } catch (err) {
+        console.warn(`[postbuild-compat] Ignored CSS ${path.basename(file)}: ${err.message}`);
+      }
+    }
   }
+
+  console.log(`[postbuild-compat] Transpiled ${jsCount} JS chunks and ${cssCount} CSS chunks to es2016/chrome53/safari11 (Smart TV, Mobile & PC).`);
 }
 
-let cssCount = 0;
-for (const file of cssFiles) {
-  try {
-    const code = fs.readFileSync(file, 'utf8');
-    const expanded = expandLogicalCss(code);
-    const result = esbuild.transformSync(expanded, {
-      loader: 'css',
-      target: ['chrome53', 'safari11'],
-      minify: true,
-    });
-    // Run expandLogicalCss once more in case esbuild collapsed top/right/bottom/left back to inset
-    const finalCss = expandLogicalCss(result.code);
-    fs.writeFileSync(file, finalCss, 'utf8');
-    cssCount++;
-  } catch (err) {
-    console.warn(`[postbuild-compat] Ignored CSS ${path.basename(file)}: ${err.message}`);
-  }
+if (process.argv[1] && process.argv[1].endsWith('postbuild-compat.mjs')) {
+  runPostbuildCompat();
 }
-
-console.log(`[postbuild-compat] Transpiled ${jsCount} JS chunks and ${cssCount} CSS chunks to es2016/chrome53/safari11 (Smart TV, Mobile & PC).`);

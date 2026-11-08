@@ -1,5 +1,15 @@
+import path from 'path';
+
+if (
+  process.env.NEXT_ADAPTER_PATH &&
+  !process.env.NEXT_ADAPTER_PATH.endsWith('next-compat-adapter.mjs')
+) {
+  process.env.__ORIG_VERCEL_ADAPTER_PATH = process.env.NEXT_ADAPTER_PATH;
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  adapterPath: path.resolve(process.cwd(), 'scripts/next-compat-adapter.mjs'),
   // Impede que node-ssh/ssh2 sejam bundlados pelo Webpack/Turbopack
   // (são módulos nativos Node.js, devem rodar apenas no servidor)
   serverExternalPackages: ['node-ssh', 'ssh2', 'cpu-features', 'sshcrypto'],
