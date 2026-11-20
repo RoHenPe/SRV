@@ -1,8 +1,10 @@
 import { runSSH, apiHandler } from '@/lib/ssh';
 import { logAction } from '@/lib/logger';
+import { sanitizeSensitiveText } from '@/lib/sanitize';
 
-// POST /api/ia/agent
-// Suporta motores técnicos: cli-agent (antigravity/agy), multi-agent (crewai), local-llm (ollama/gemma4), shell-interpreter (interpreter)
+export const maxDuration = 60;
+
+// POST /api/ia/agent (Admin apenas)
 export async function POST(request) {
   return apiHandler(
     async (ctx) => {
@@ -23,10 +25,10 @@ export async function POST(request) {
           if command -v agy >/dev/null 2>&1; then
             agy ${isAutonomous ? '--dangerously-skip-permissions' : '--mode plan'} --print="$PROMPT_TXT" </dev/null 2>&1
           elif command -v interpreter >/dev/null 2>&1; then
-            systemctl is-active --quiet ollama || sudo systemctl start ollama 2>/dev/null || true
+            systemctl is-active --quiet ollama || sudo -n systemctl start ollama 2>/dev/null || true
             interpreter ${isAutonomous ? '-y' : ''} --prompt "$PROMPT_TXT" </dev/null 2>&1
           else
-            systemctl is-active --quiet ollama || sudo systemctl start ollama 2>/dev/null || true
+            systemctl is-active --quiet ollama || sudo -n systemctl start ollama 2>/dev/null || true
             MODEL_NAME=$(ollama ps 2>/dev/null | awk 'NR>1 {print $1}' | head -n 1)
             MODEL_NAME=\${MODEL_NAME:-ia-core:latest}
             python3 -c "import json, urllib.request, base64; p = base64.b64decode('${b64Prompt}').decode('utf-8'); req = urllib.request.Request('http://127.0.0.1:11434/api/generate', data=json.dumps({'model': '$MODEL_NAME', 'prompt': p, 'stream': False, 'keep_alive': '24h', 'options': {'num_ctx': 1024, 'num_predict': 256}}).encode('utf-8'), headers={'Content-Type': 'application/json'}); print(json.loads(urllib.request.urlopen(req, timeout=35).read().decode('utf-8')).get('response', ''))" 2>&1
@@ -42,7 +44,7 @@ export async function POST(request) {
           elif command -v agy >/dev/null 2>&1; then
             agy ${isAutonomous ? '--dangerously-skip-permissions' : '--mode plan'} --print="$PROMPT_TXT" </dev/null 2>&1
           else
-            systemctl is-active --quiet ollama || sudo systemctl start ollama 2>/dev/null || true
+            systemctl is-active --quiet ollama || sudo -n systemctl start ollama 2>/dev/null || true
             MODEL_NAME=$(ollama ps 2>/dev/null | awk 'NR>1 {print $1}' | head -n 1)
             MODEL_NAME=\${MODEL_NAME:-ia-core:latest}
             python3 -c "import json, urllib.request, base64; p = base64.b64decode('${b64Prompt}').decode('utf-8'); req = urllib.request.Request('http://127.0.0.1:11434/api/generate', data=json.dumps({'model': '$MODEL_NAME', 'prompt': p, 'stream': False, 'keep_alive': '24h', 'options': {'num_ctx': 1024, 'num_predict': 256}}).encode('utf-8'), headers={'Content-Type': 'application/json'}); print(json.loads(urllib.request.urlopen(req, timeout=35).read().decode('utf-8')).get('response', ''))" 2>&1
@@ -50,7 +52,7 @@ export async function POST(request) {
         `;
       } else if (engine === 'local-llm' || engine === 'gemma4') {
         cmd = `
-          systemctl is-active --quiet ollama || sudo systemctl start ollama 2>/dev/null || true
+          systemctl is-active --quiet ollama || sudo -n systemctl start ollama 2>/dev/null || true
           MODEL_NAME=$(ollama ps 2>/dev/null | awk 'NR>1 {print $1}' | head -n 1)
           if [ -z "$MODEL_NAME" ]; then
             MODEL_NAME=$(ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -iE '^ia-core|^qwen2.5-coder:3b|^gemma' | head -n 1)
@@ -60,7 +62,7 @@ export async function POST(request) {
         `;
       } else {
         cmd = `
-          systemctl is-active --quiet ollama || sudo systemctl start ollama 2>/dev/null || true
+          systemctl is-active --quiet ollama || sudo -n systemctl start ollama 2>/dev/null || true
           MODEL_NAME=$(ollama ps 2>/dev/null | awk 'NR>1 {print $1}' | head -n 1)
           MODEL_NAME=\${MODEL_NAME:-ia-core:latest}
           python3 -c "import json, urllib.request, base64; p = base64.b64decode('${b64Prompt}').decode('utf-8'); sys_p = 'Você é o Open Interpreter do servidor Linux SRV (Ubuntu/Docker). Responda de forma objetiva e forneça os comandos ou diagnóstico exato.'; req = urllib.request.Request('http://127.0.0.1:11434/api/generate', data=json.dumps({'model': '$MODEL_NAME', 'system': sys_p, 'prompt': p, 'stream': False, 'keep_alive': '24h', 'options': {'num_ctx': 1024, 'num_predict': 256}}).encode('utf-8'), headers={'Content-Type': 'application/json'}); print(json.loads(urllib.request.urlopen(req, timeout=35).read().decode('utf-8')).get('response', ''))" 2>&1
@@ -80,10 +82,11 @@ export async function POST(request) {
       return {
         ok: true,
         engine,
-        output: result.stdout || result.stderr || 'Nenhuma saída retornada.',
+        output: sanitizeSensitiveText(result.stdout || result.stderr || 'Nenhuma saída retornada.'),
       };
     },
     request,
-    'POST /api/ia/agent'
+    'POST /api/ia/agent',
+    { roles: ['admin'] }
   );
 }

@@ -3,10 +3,11 @@ import { runSSH, apiHandler } from '@/lib/ssh';
 export async function POST(request) {
   return apiHandler(
     async () => {
-      const result = await runSSH('sudo reboot');
-      return { message: 'Servidor está reiniciando...', output: result.stdout };
+      await runSSH('sudo -n reboot');
+      return { message: 'Servidor está reiniciando...' };
     },
     request,
-    'POST /api/power/reboot'
+    'POST /api/power/reboot',
+    { roles: ['admin'] }
   );
 }

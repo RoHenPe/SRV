@@ -1,4 +1,6 @@
-import { runAndEnsurePort, getTargetHost, apiHandler } from '@/lib/ssh';
+import { runAndEnsurePort, apiHandler } from '@/lib/ssh';
+
+export const maxDuration = 60;
 
 export async function POST(request) {
   return apiHandler(
@@ -14,11 +16,11 @@ export async function POST(request) {
         maxWaitSeconds: 15,
       });
 
-      const host = getTargetHost();
       return {
         ok: true,
+        ready: true,
+        port: 8443,
         message: 'Ambiente IDE (VS Code) ativo.',
-        url: `http://${host}:8443`,
       };
     },
     request,

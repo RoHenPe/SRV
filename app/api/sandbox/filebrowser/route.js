@@ -1,4 +1,6 @@
-import { runAndEnsurePort, getTargetHost, apiHandler } from '@/lib/ssh';
+import { runAndEnsurePort, apiHandler } from '@/lib/ssh';
+
+export const maxDuration = 60;
 
 export async function POST(request) {
   return apiHandler(
@@ -14,11 +16,11 @@ export async function POST(request) {
         maxWaitSeconds: 15,
       });
 
-      const host = getTargetHost();
       return {
         ok: true,
+        ready: true,
+        port: 8089,
         message: 'File Browser iniciado com sucesso!',
-        url: `http://${host}:8089`,
       };
     },
     request,

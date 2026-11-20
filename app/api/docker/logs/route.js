@@ -1,4 +1,5 @@
 import { runSSH, apiHandler } from '@/lib/ssh';
+import { sanitizeSensitiveText } from '@/lib/sanitize';
 
 const CONTAINER_NAME_RE = /^[a-zA-Z0-9_.-]{1,128}$/;
 
@@ -13,7 +14,7 @@ export async function GET(request) {
       }
 
       const result = await runSSH(`docker logs --tail 100 ${name}`);
-      const logs = (result.stdout + '\n' + result.stderr).trim();
+      const logs = sanitizeSensitiveText((result.stdout + '\n' + result.stderr).trim());
       return { output: logs || 'Sem logs.' };
     },
     request,

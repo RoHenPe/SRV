@@ -1,10 +1,10 @@
 import { runSSH, apiHandler } from '@/lib/ssh';
 import { logAction } from '@/lib/logger';
+import { sanitizeSensitiveText } from '@/lib/sanitize';
 
 /**
  * POST /api/terminal/exec
- * Executa um comando SSH diretamente via API HTTPS com estado (cwd) isolado por requisição/dispositivo.
- * Body: { command: string, cwd?: string }
+ * Executa um comando SSH administrativo via API HTTPS (somente Admin).
  */
 export async function POST(request) {
   return apiHandler(
@@ -15,7 +15,7 @@ export async function POST(request) {
       }
 
       const b64Cmd = Buffer.from(command.trim(), 'utf-8').toString('base64');
-      const safeCwd = (cwd || '~').replace(/"/g, '');
+      const safeCwd = String(cwd || '~').replace(/["$`\\]/g, '');
       const marker = '___SRV_CWD_MARKER___';
 
       const wrappedCmd = `
@@ -32,7 +32,7 @@ export async function POST(request) {
       const res = await runSSH(wrappedCmd, 25000);
       const rawOut = res.stdout || '';
       const lines = rawOut.split('\n');
-      let nextCwd = cwd || '/home/rodrigo';
+      let nextCwd = cwd || '~';
       let cmdExitCode = res.code ?? 0;
 
       const markerIdx = lines.findIndex((l) => l.startsWith(`${marker}:`));
@@ -42,14 +42,19 @@ export async function POST(request) {
         const markerLine = lines[markerIdx];
         const parts = markerLine.split(':');
         if (parts.length >= 3) {
-          nextCwd = parts.slice(1, -1).join(':') || nextCwd;
+          nextCwd = sanitizeSensitiveText(parts.slice(1, -1).join(':') || nextCwd);
           cmdExitCode = parseInt(parts[parts.length - 1], 10) || 0;
         }
         cleanOutput = lines.slice(0, markerIdx).join('\n').trimEnd();
       }
 
+      const scrubbedOutput = sanitizeSensitiveText(
+        cleanOutput || (res.stderr ? res.stderr.trim() : '(comando concluído sem saída)'),
+        { maskTunnels: false }
+      );
+
       await logAction('terminal.exec', cmdExitCode === 0 ? 'success' : 'nonzero_exit', {
-        command: command.trim().slice(0, 200),
+        command: sanitizeSensitiveText(command.trim().slice(0, 200)),
         cwd: nextCwd,
         exitCode: cmdExitCode,
         user: ctx.username,
@@ -58,15 +63,14 @@ export async function POST(request) {
       });
 
       return {
-        output: cleanOutput || (res.stderr ? res.stderr.trim() : '(comando concluído sem saída)'),
+        output: scrubbedOutput,
         cwd: nextCwd,
         exitCode: cmdExitCode,
-        host: res.host,
-        port: res.port,
         route: res.route,
       };
     },
     request,
-    'POST /api/terminal/exec'
+    'POST /api/terminal/exec',
+    { roles: ['admin'] }
   );
 }

@@ -1,4 +1,6 @@
-import { runAndEnsurePort, runSSH, getTargetHost, apiHandler } from '@/lib/ssh';
+import { runAndEnsurePort, runSSH, apiHandler } from '@/lib/ssh';
+
+export const maxDuration = 60;
 
 export async function POST(request) {
   return apiHandler(
@@ -37,11 +39,11 @@ export async function POST(request) {
       `;
       await runSSH(focusSteamCmd, 8000);
 
-      const host = getTargetHost();
       return {
         ok: true,
+        ready: true,
+        port: 8083,
         message: 'Ambiente Gráfico (Steam Headless) ativo.',
-        url: `http://${host}:8083`,
       };
     },
     request,

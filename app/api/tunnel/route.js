@@ -5,16 +5,16 @@ import { touchDeviceSession } from '@/lib/auth';
 export async function POST(request) {
   return apiHandler(
     async (ctx) => {
-      const { port, protocol, action, mode, appName, stopAll } = await request.json();
+      const { port, protocol, action, mode, appName, stopAll, localHost, path = '' } = await request.json();
 
       if (action === 'stop') {
         if (stopAll) {
           await stopNgrok(null);
-          return { ok: true, message: 'Túneis temporários encerrados' };
+          return { ok: true, message: 'Túneis temporários encerrados.' };
         }
         if (port) {
           await stopNgrok(port);
-          return { ok: true, message: `Túnel da porta ${port} encerrado` };
+          return { ok: true, message: 'Túnel encerrado com sucesso.' };
         }
         await touchDeviceSession({
           deviceId: ctx.deviceId,
@@ -23,24 +23,31 @@ export async function POST(request) {
           ip: ctx.clientIp,
           activeApp: null,
         });
-        return { ok: true, message: 'Sessão de aplicativo liberada neste dispositivo' };
+        return { ok: true, message: 'Sessão de aplicativo liberada neste dispositivo.' };
       }
 
       if (!port) {
         throw new Error('Porta não informada.');
       }
 
-      const url = await startNgrok(port, protocol, mode || 'tunnel');
+      let url = await startNgrok(port, protocol, mode || 'tunnel', localHost);
       if (!url) {
         throw new Error('Não foi possível obter a URL do serviço.');
       }
+
+      const base = url.replace(/\/$/, '');
+      let resolvedPath = typeof path === 'string' ? path : '';
+      if (Number(port) === 8888 && process.env.JUPYTER_TOKEN && !resolvedPath.includes('token=')) {
+        resolvedPath = `/lab?token=${encodeURIComponent(process.env.JUPYTER_TOKEN)}`;
+      }
+      url = `${base}${resolvedPath}`;
 
       await touchDeviceSession({
         deviceId: ctx.deviceId,
         deviceName: ctx.deviceName,
         username: ctx.username,
         ip: ctx.clientIp,
-        activeApp: appName ? `${appName} (:${port})` : `Porta ${port}`,
+        activeApp: appName ? `${appName}` : `App`,
       });
 
       return {

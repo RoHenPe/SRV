@@ -5,7 +5,7 @@ export async function GET(request) {
   return apiHandler(
     async () => {
       const { searchParams } = new URL(request.url);
-      const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '150', 10), 10), 500);
+      const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '150', 10), 10), 400);
       const level = searchParams.get('level') || 'all';
       const search = searchParams.get('search') || '';
       const deviceId = searchParams.get('deviceId') || 'all';
@@ -25,7 +25,8 @@ export async function GET(request) {
       };
     },
     request,
-    'GET /api/logs'
+    'GET /api/logs',
+    { roles: ['admin'] }
   );
 }
 
@@ -71,6 +72,7 @@ export async function DELETE(request) {
       return { cleared: true };
     },
     request,
-    'DELETE /api/logs'
+    'DELETE /api/logs',
+    { roles: ['admin'] }
   );
 }

@@ -1,5 +1,8 @@
 import { runSSH, apiHandler } from '@/lib/ssh';
 import { logAction } from '@/lib/logger';
+import { sanitizeSensitiveText } from '@/lib/sanitize';
+
+export const maxDuration = 60;
 
 const SERVICE_MAP = {
   cups: { container: 'cupsd', composeDir: '~/cups-deploy' },
@@ -10,8 +13,7 @@ const SERVICE_MAP = {
   srv_postgres_db: { container: 'srv_postgres_db', composeDir: '~/data-portal' },
   portal: { container: null, composeDir: '~/data-portal' },
   emulator: { container: 'emulator-android-container-1', composeDir: '~/Automation/Apps/Emulator' },
-  ttyd: { container: 'srv_dashboard', composeDir: '~/srv-dashboard' },
-  dashboard: { container: 'rohenper_dashboard', composeDir: '~/rohenper-dashboard' },
+  ttyd: { container: 'srv_monitor', composeDir: '~/srv-monitor' },
   jarvis: { container: 'open-webui', composeDir: null },
   'open-webui': { container: 'open-webui', composeDir: null },
   srv_erp_mercados: { container: 'srv_erp_mercados', composeDir: '~/erp-mercados/deploy' },
@@ -37,8 +39,8 @@ export async function POST(request) {
         if (spec.container) {
           if (action === 'start') {
             cmd = spec.composeDir
-              ? `docker start ${spec.container} 2>/dev/null || (cd ${spec.composeDir} && docker compose up -d)`
-              : `docker start ${spec.container}`;
+              ? `docker unpause ${spec.container} 2>/dev/null || docker start ${spec.container} 2>/dev/null || (cd ${spec.composeDir} && docker compose up -d)`
+              : `docker unpause ${spec.container} 2>/dev/null || docker start ${spec.container}`;
           } else if (action === 'stop') {
             cmd = `docker stop ${spec.container}`;
           } else if (action === 'restart') {
@@ -60,7 +62,7 @@ export async function POST(request) {
 
       const result = await runSSH(cmd);
       if (result.code !== 0) {
-        throw new Error(result.stderr || result.stdout || `Falha ao executar ${action} em ${service}`);
+        throw new Error(`Falha ao executar ${action} no serviço ${service}.`);
       }
 
       if (service === 'srv_onlyoffice' && action === 'start') {
@@ -69,19 +71,18 @@ export async function POST(request) {
         );
       }
 
-      await logAction(`service.${action}`, result.code === 0 ? 'success' : 'error', {
+      await logAction(`service.${action}`, 'success', {
         service,
         action,
         user: ctx.username,
         deviceId: ctx.deviceId,
         deviceName: ctx.deviceName,
-        output: (result.stdout || result.stderr || '').slice(0, 300),
       });
 
       return {
         ok: true,
         message: `Serviço ${service} executado (${action}) com sucesso.`,
-        output: result.stdout || result.stderr || '',
+        output: sanitizeSensitiveText(result.stdout || result.stderr || ''),
       };
     },
     request,

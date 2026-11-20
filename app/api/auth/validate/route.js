@@ -1,14 +1,36 @@
-import { validateToken, extractToken, getUsers, touchDeviceSession, AuthError } from '@/lib/auth';
+import crypto from 'crypto';
+import {
+  validateToken,
+  extractToken,
+  getUsers,
+  verifyPassword,
+  touchDeviceSession,
+  createSessionCookieValue,
+  buildAuthCookieHeader,
+  AuthError,
+} from '@/lib/auth';
 import { getClientIp, getClientDeviceId, getClientDeviceName, checkRateLimit } from '@/lib/rateLimit';
 import { logAction, logRequest } from '@/lib/logger';
 import { classifyError, recordErrorFlow } from '@/lib/errorFlow';
+import { formatClientSafeError } from '@/lib/sanitize';
+
+function isHttpsRequest(request) {
+  const proto = request.headers?.get?.('x-forwarded-proto') || '';
+  return proto.includes('https') || Boolean(process.env.VERCEL);
+}
+
+function timingSafeMatchesEnvKey(value) {
+  const envKey = process.env.API_KEY;
+  if (!envKey || typeof value !== 'string' || value.length !== envKey.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(value, 'utf-8'), Buffer.from(envKey, 'utf-8'));
+}
 
 export async function POST(request) {
   const startTime = Date.now();
   const deviceId = getClientDeviceId(request);
   const deviceName = getClientDeviceName(request);
   const ip = getClientIp(request);
-  const userAgent = request.headers?.get?.('user-agent') || '';
+  const isHttps = isHttpsRequest(request);
 
   try {
     if (!checkRateLimit(request, 'POST /api/auth/validate')) {
@@ -17,6 +39,7 @@ export async function POST(request) {
         { status: 429 }
       );
     }
+
     let body = {};
     try {
       body = await request.json();
@@ -26,15 +49,15 @@ export async function POST(request) {
     const resolvedDeviceName = body.deviceName || deviceName;
 
     if (body.username && body.password) {
-      if (process.env.API_KEY && (body.password === process.env.API_KEY || body.username === process.env.API_KEY)) {
+      if (timingSafeMatchesEnvKey(body.password) || timingSafeMatchesEnvKey(body.username)) {
         await touchDeviceSession({
           deviceId: resolvedDeviceId,
           deviceName: resolvedDeviceName,
           username: 'admin',
           ip,
-          userAgent,
           route: '/api/auth/validate',
           resetRevoked: true,
+          forcePersist: true,
         });
         await logAction('auth.login', 'success', {
           user: 'admin',
@@ -42,40 +65,46 @@ export async function POST(request) {
           deviceName: resolvedDeviceName,
           ip,
         });
-        return Response.json({
-          ok: true,
-          token: process.env.API_KEY,
-          username: 'admin',
-          role: 'admin',
-          deviceId: resolvedDeviceId,
-        });
+        const cookieVal = createSessionCookieValue('admin', 'admin');
+        const headers = new Headers();
+        if (cookieVal) {
+          headers.set('Set-Cookie', buildAuthCookieHeader(cookieVal, isHttps, false));
+        }
+        return Response.json(
+          {
+            ok: true,
+            token: process.env.API_KEY,
+            username: 'admin',
+            role: 'admin',
+            deviceId: resolvedDeviceId,
+          },
+          { headers }
+        );
       }
 
       const users = await getUsers();
-      const user = users.find((u) => u.username === body.username && u.password === body.password);
+      const user = users.find((u) => u.username === body.username && verifyPassword(body.password, u));
 
       if (!user) {
         await logAction('auth.login_failed', 'denied', {
-          attemptedUser: body.username,
+          attemptedUser: String(body.username).slice(0, 32),
           deviceId: resolvedDeviceId,
           deviceName: resolvedDeviceName,
           ip,
         });
-        return Response.json(
-          { ok: false, error: 'Usuário ou senha incorretos' },
-          { status: 401 }
-        );
+        return Response.json({ ok: false, error: 'Usuário ou senha incorretos' }, { status: 401 });
       }
 
+      const role = user.role || 'admin';
       const token = Buffer.from(`${body.username}:${body.password}`).toString('base64');
       await touchDeviceSession({
         deviceId: resolvedDeviceId,
         deviceName: resolvedDeviceName,
         username: user.username,
         ip,
-        userAgent,
         route: '/api/auth/validate',
         resetRevoked: true,
+        forcePersist: true,
       });
 
       await logAction('auth.login', 'success', {
@@ -85,21 +114,27 @@ export async function POST(request) {
         ip,
       });
 
-      return Response.json({
-        ok: true,
-        token,
-        username: user.username,
-        role: user.role || 'admin',
-        deviceId: resolvedDeviceId,
-      });
+      const cookieVal = createSessionCookieValue(user.username, role);
+      const headers = new Headers();
+      if (cookieVal) {
+        headers.set('Set-Cookie', buildAuthCookieHeader(cookieVal, isHttps, false));
+      }
+
+      return Response.json(
+        {
+          ok: true,
+          token,
+          username: user.username,
+          role,
+          deviceId: resolvedDeviceId,
+        },
+        { headers }
+      );
     }
 
     const token = extractToken(request);
     if (!token) {
-      return Response.json(
-        { ok: false, error: 'Cabeçalho de autorização ausente' },
-        { status: 401 }
-      );
+      return Response.json({ ok: false, error: 'Cabeçalho de autorização ausente' }, { status: 401 });
     }
 
     const user = await validateToken(token);
@@ -108,19 +143,28 @@ export async function POST(request) {
       deviceName: resolvedDeviceName,
       username: user.username,
       ip,
-      userAgent,
       route: '/api/auth/validate',
       activeView: body.activeView,
       activeApp: body.activeApp,
     });
 
-    return Response.json({
-      ok: true,
-      valid: true,
-      username: user.username,
-      role: user.role || 'admin',
-      deviceId: resolvedDeviceId,
-    });
+    const role = user.role || 'admin';
+    const cookieVal = createSessionCookieValue(user.username, role);
+    const headers = new Headers();
+    if (cookieVal) {
+      headers.set('Set-Cookie', buildAuthCookieHeader(cookieVal, isHttps, false));
+    }
+
+    return Response.json(
+      {
+        ok: true,
+        valid: true,
+        username: user.username,
+        role,
+        deviceId: resolvedDeviceId,
+      },
+      { headers }
+    );
   } catch (err) {
     const responseTime = Date.now() - startTime;
     const status = err instanceof AuthError ? err.status : 500;
@@ -153,8 +197,20 @@ export async function POST(request) {
       ip,
     });
     return Response.json(
-      { ok: false, error: err.message, errorId: diagnosis.errorId, category: diagnosis.category },
+      {
+        ok: false,
+        error: formatClientSafeError(err, diagnosis),
+        errorId: diagnosis.errorId,
+        category: diagnosis.category,
+      },
       { status }
     );
   }
+}
+
+export async function DELETE(request) {
+  const isHttps = isHttpsRequest(request);
+  const headers = new Headers();
+  headers.set('Set-Cookie', buildAuthCookieHeader('', isHttps, true));
+  return Response.json({ ok: true, loggedOut: true }, { headers });
 }

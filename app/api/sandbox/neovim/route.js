@@ -1,4 +1,6 @@
-import { runAndEnsurePort, getTargetHost, apiHandler } from '@/lib/ssh';
+import { runAndEnsurePort, apiHandler } from '@/lib/ssh';
+
+export const maxDuration = 60;
 
 export async function POST(request) {
   return apiHandler(
@@ -18,11 +20,11 @@ export async function POST(request) {
         maxWaitSeconds: 20,
       });
 
-      const host = getTargetHost();
       return {
         ok: true,
+        ready: true,
+        port: 7683,
         message: 'Editor Neovim Web ativo.',
-        url: `http://${host}:7683`,
       };
     },
     request,

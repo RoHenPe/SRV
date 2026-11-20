@@ -1,5 +1,8 @@
 import { runSSH, apiHandler } from '@/lib/ssh';
 import { generateText } from 'ai';
+import { sanitizeSensitiveText } from '@/lib/sanitize';
+
+export const maxDuration = 60;
 
 export async function POST(request) {
   return apiHandler(
@@ -8,12 +11,12 @@ export async function POST(request) {
       const { model, messages, provider } = body;
 
       if (!model || !messages) {
-        throw new Error('Model and messages are required');
+        throw new Error('Modelo e mensagens são obrigatórios.');
       }
 
-      const systemPrompt = 'Você é o assistente oficial do ROHENPER Dashboard, um painel de administração de servidor Linux doméstico rodando Ubuntu, Docker, túnel Bore e Tailscale. Auxilie o administrador a diagnosticar problemas, monitorar recursos (CPU/RAM/Disco), sugerir comandos e gerenciar serviços de forma profissional, direta e segura. Responda em formato markdown legível.';
+      const systemPrompt =
+        'Você é o assistente oficial do painel SRV, auxiliando na administração segura do servidor Linux, Docker e automações. Responda em português em formato markdown legível.';
 
-      // Se o modelo selecionado for o Antigravity CLI no servidor
       if (model === 'antigravity' || model.startsWith('antigravity')) {
         const lastMsg = messages[messages.length - 1]?.content || '';
         const b64Prompt = Buffer.from(lastMsg, 'utf-8').toString('base64');
@@ -27,12 +30,11 @@ export async function POST(request) {
         return {
           message: {
             role: 'assistant',
-            content: (agyRes.stdout || agyRes.stderr || 'Sem resposta do Antigravity.').trim(),
+            content: sanitizeSensitiveText((agyRes.stdout || agyRes.stderr || 'Sem resposta do Antigravity.').trim()),
           },
         };
       }
 
-      // Se o modelo for da nuvem (Vercel AI Gateway)
       if (provider === 'gateway' || model.includes('/') || model.startsWith('gateway:')) {
         const gatewayModel = model.replace(/^gateway:/, '');
         const coreMessages = messages.map((m) => ({
@@ -53,27 +55,25 @@ export async function POST(request) {
               content: result.text,
             },
           };
-        } catch (gatewayErr) {
-          // Fallback automático para Antigravity no servidor caso o gateway falhe
+        } catch (_) {
           const lastMsg = messages[messages.length - 1]?.content || '';
           const b64Prompt = Buffer.from(lastMsg, 'utf-8').toString('base64');
           const agyRes = await runSSH(
-            `export PATH="$HOME/.local/bin:$PATH"; PROMPT_TXT=$(echo "${b64Prompt}" | base64 -d); agy --dangerously-skip-permissions --print="$PROMPT_TXT" </dev/null 2>&1`,
+            `NVM_BIN=$(ls -d "$HOME"/.nvm/versions/node/*/bin 2>/dev/null | tail -n 1); export PATH="$NVM_BIN:$HOME/.local/bin:$PATH"; PROMPT_TXT=$(echo "${b64Prompt}" | base64 -d); agy --dangerously-skip-permissions --print="$PROMPT_TXT" </dev/null 2>&1`,
             30000
           );
           if (agyRes.stdout?.trim()) {
             return {
               message: {
                 role: 'assistant',
-                content: agyRes.stdout.trim(),
+                content: sanitizeSensitiveText(agyRes.stdout.trim()),
               },
             };
           }
-          throw new Error(`Vercel AI Gateway (${gatewayModel}): ${gatewayErr.message || gatewayErr}`);
+          throw new Error('Modelo em nuvem temporariamente indisponível.');
         }
       }
 
-      // Langchain concept: Inject a context-aware system prompt template to improve response quality
       const systemMessage = {
         role: 'system',
         content: systemPrompt,
@@ -95,20 +95,18 @@ export async function POST(request) {
       });
 
       const b64Payload = Buffer.from(jsonPayload).toString('base64');
-      
-      // Garante que o Ollama esteja ativo e executa via curl stdin
-      const cmd = `(systemctl is-active --quiet ollama || sudo systemctl start ollama 2>/dev/null || true) && echo "${b64Payload}" | base64 -d | curl -s -X POST http://127.0.0.1:11434/api/chat -H "Content-Type: application/json" -d @-`;
-      
+      const cmd = `(systemctl is-active --quiet ollama || sudo -n systemctl start ollama 2>/dev/null || true) && echo "${b64Payload}" | base64 -d | curl -s -X POST http://127.0.0.1:11434/api/chat -H "Content-Type: application/json" -d @-`;
+
       const result = await runSSH(cmd, 45000);
       if (result.code !== 0) {
-        throw new Error(`Erro ao conectar ao Ollama no servidor: ${result.stderr || result.stdout}`);
+        throw new Error('Serviço Ollama indisponível no momento.');
       }
 
       let data;
       try {
         data = JSON.parse(result.stdout);
       } catch (e) {
-        throw new Error(`Resposta inválida do Ollama: ${result.stdout}`);
+        throw new Error('Resposta inválida do serviço de IA local.');
       }
 
       return { message: data.message };
@@ -117,4 +115,3 @@ export async function POST(request) {
     'POST /api/ia/chat'
   );
 }
-

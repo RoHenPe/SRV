@@ -1,4 +1,6 @@
-import { runSSH, runAndEnsurePort, getTargetHost, apiHandler } from '@/lib/ssh';
+import { runSSH, runAndEnsurePort, apiHandler } from '@/lib/ssh';
+
+export const maxDuration = 60;
 
 export async function POST(request) {
   return apiHandler(
@@ -17,7 +19,6 @@ export async function POST(request) {
         maxWaitSeconds: 15,
       });
 
-      // Garante que o basic auth do nginx interno esteja desativado mesmo após restart do container
       await runSSH(
         'if docker exec -u 0 srv_webtop_sandbox grep -q "^[[:space:]]*auth_basic" /etc/nginx/sites-available/default 2>/dev/null; then ' +
         '  docker exec -u 0 srv_webtop_sandbox sed -i "s/auth_basic/#auth_basic/g" /etc/nginx/sites-available/default && ' +
@@ -25,11 +26,11 @@ export async function POST(request) {
         'fi'
       );
 
-      const host = getTargetHost();
       return {
         ok: true,
+        ready: true,
+        port: 3000,
         message: 'Webtop iniciado com sucesso!',
-        url: `http://${host}:3000`,
       };
     },
     request,

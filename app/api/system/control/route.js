@@ -1,19 +1,31 @@
 import { runSSH, apiHandler } from '@/lib/ssh';
 import { logAction } from '@/lib/logger';
+import { maskListeningEndpoint, sanitizeSensitiveText } from '@/lib/sanitize';
 
 const MONITORED_SERVICES = [
   'docker',
   'ollama',
   'tailscaled',
   'bore-tunnel',
+  'srv-cmd-bridge',
+  'srv-bridge-tunnel',
+  'bore-erp-web',
+  'bore-erp-pg',
+  'srv-xbox-gamepad',
+  'cockpit',
+  'smbd',
+  'adb-server',
   'ssh',
   'cron',
 ];
 
-/**
- * GET /api/system/control
- * Retorna processos (Top CPU/RAM), status dos serviços systemd, portas abertas e túneis ativos.
- */
+const PROTECTED_REMOTE_SERVICES = new Set([
+  'bore-tunnel',
+  'srv-cmd-bridge',
+  'srv-bridge-tunnel',
+  'ssh',
+]);
+
 export async function GET(request) {
   return apiHandler(
     async () => {
@@ -23,15 +35,16 @@ export async function GET(request) {
 
       const combinedCmd = [
         'echo "===PROCESSES==="',
-        'ps -eo pid,user,%cpu,%mem,etime,comm --sort=-%cpu | head -n 16',
+        'ps -eo pid,%cpu,%mem,etime,comm --sort=-%cpu | head -n 16',
         'echo "===SERVICES==="',
         servicesCheck,
         'echo "===PORTS==="',
-        "ss -tln | awk 'NR>1 {print $4}' | head -n 25",
+        "ss -tln | awk 'NR>1 {print $4}' | head -n 30",
         'echo "===TUNNELS==="',
-        '(journalctl -u bore-tunnel -n 30 --no-pager 2>/dev/null | grep -o "bore.pub:[0-9]*" | tail -n 1 || true)',
-        '(grep -h -o "https://[-a-zA-Z0-9]*\\.trycloudflare\\.com" /tmp/cf_*.log 2>/dev/null || true)',
-        '(grep -h -o "bore.pub:[0-9]*" /tmp/bore_*.log 2>/dev/null || true)',
+        '(systemctl is-active --quiet bore-tunnel && echo "Túnel SSH Bore: Ativo" || echo "Túnel SSH Bore: Inativo")',
+        '(systemctl is-active --quiet srv-bridge-tunnel && echo "Bridge Bore: Ativo" || echo "Bridge Bore: Inativo")',
+        '(systemctl is-active --quiet bore-erp-web && echo "ERP Web Bore: Ativo" || echo "ERP Web Bore: Inativo")',
+        '(grep -h -o "https://[-a-zA-Z0-9]*\\.trycloudflare\\.com" /tmp/cf_*.log 2>/dev/null | sort -u || true)',
       ].join(' && ');
 
       const res = await runSSH(combinedCmd);
@@ -46,11 +59,10 @@ export async function GET(request) {
         const parts = line.split(/\s+/);
         return {
           pid: parts[0],
-          user: parts[1],
-          cpu: parts[2],
-          mem: parts[3],
-          elapsed: parts[4],
-          command: parts.slice(5).join(' '),
+          cpu: parts[1],
+          mem: parts[2],
+          elapsed: parts[3],
+          command: sanitizeSensitiveText(parts.slice(4).join(' ')),
         };
       });
 
@@ -67,7 +79,7 @@ export async function GET(request) {
         new Set(
           portsRaw
             .split('\n')
-            .map((l) => l.trim())
+            .map((l) => maskListeningEndpoint(l))
             .filter(Boolean)
         )
       );
@@ -76,14 +88,12 @@ export async function GET(request) {
         new Set(
           tunnelsRaw
             .split('\n')
-            .map((l) => l.trim())
+            .map((l) => sanitizeSensitiveText(l, { maskTunnels: false }).trim())
             .filter(Boolean)
         )
       );
 
       return {
-        host: res.host,
-        port: res.port,
         route: res.route,
         processes,
         services,
@@ -92,16 +102,11 @@ export async function GET(request) {
       };
     },
     request,
-    'GET /api/system/control'
+    'GET /api/system/control',
+    { roles: ['admin'] }
   );
 }
 
-/**
- * POST /api/system/control
- * Ações diretas:
- * - { action: 'kill_process', pid: '1234', signal: '9' | '15' }
- * - { action: 'service', service: 'ollama', op: 'restart' | 'start' | 'stop' }
- */
 export async function POST(request) {
   return apiHandler(
     async (ctx) => {
@@ -114,7 +119,7 @@ export async function POST(request) {
           throw new Error('PID inválido.');
         }
         const sig = body.signal === '15' ? '-15' : '-9';
-        const res = await runSSH(`sudo kill ${sig} ${pid} 2>&1 || kill ${sig} ${pid} 2>&1`);
+        const res = await runSSH(`sudo -n kill ${sig} ${pid} 2>&1 || kill ${sig} ${pid} 2>&1`);
         await logAction('system.kill_process', 'success', {
           pid,
           signal: sig,
@@ -124,7 +129,7 @@ export async function POST(request) {
         });
         return {
           message: `Processo ${pid} finalizado (${sig}).`,
-          output: res.stdout || res.stderr,
+          output: sanitizeSensitiveText(res.stdout || res.stderr),
         };
       }
 
@@ -136,10 +141,10 @@ export async function POST(request) {
         if (!['start', 'stop', 'restart'].includes(op)) {
           throw new Error(`Operação inválida: ${op}`);
         }
-        if ((service === 'bore-tunnel' || service === 'ssh') && op === 'stop') {
+        if (PROTECTED_REMOTE_SERVICES.has(service) && op === 'stop') {
           throw new Error(`Não é permitido parar o serviço crítico ${service} remotamente.`);
         }
-        const res = await runSSH(`sudo systemctl ${op} ${service} 2>&1 && systemctl is-active ${service} 2>&1`);
+        const res = await runSSH(`sudo -n systemctl ${op} ${service} 2>&1 && systemctl is-active ${service} 2>&1`);
         await logAction('system.service', 'success', {
           service,
           op,
@@ -149,13 +154,14 @@ export async function POST(request) {
         });
         return {
           message: `Serviço ${service}: ${op} executado.`,
-          output: res.stdout || res.stderr,
+          output: sanitizeSensitiveText(res.stdout || res.stderr),
         };
       }
 
       throw new Error(`Ação desconhecida: ${action}`);
     },
     request,
-    'POST /api/system/control'
+    'POST /api/system/control',
+    { roles: ['admin'] }
   );
 }

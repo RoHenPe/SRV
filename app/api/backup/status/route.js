@@ -1,44 +1,40 @@
 import { runSSH, apiHandler } from '@/lib/ssh';
 
-// GET /api/backup/status — retorna o status do processo de backup e as últimas linhas do log
+// GET /api/backup/status — retorna o status do processo de backup e as últimas linhas do log (single roundtrip)
 export async function GET(request) {
   return apiHandler(
     async () => {
-      // 1. Verifica se o worker do backup ou sincronizador de fotos está rodando
-      const checkResult = await runSSH(
-        '(pgrep -f "run_headless.py --worker" >/dev/null || pgrep -f "server_photos_backup.py" >/dev/null) && echo "running" || echo "stopped"'
-      );
-      const running = checkResult.stdout.trim() === 'running';
+      const cmd = `
+        RUNNING="stopped"
+        if pgrep -f "run_headless.py --worker" >/dev/null 2>&1 || pgrep -f "server_photos_backup.py" >/dev/null 2>&1; then
+          RUNNING="running"
+        fi
+        echo "STATUS:$RUNNING"
+        if pgrep -f "server_photos_backup.py" >/dev/null 2>&1; then
+          tail -n 100 ~/google_photos_picker.log 2>/dev/null || true
+        else
+          tail -n 100 ~/Automation/Apps/Backup/EngineCore/Log/progress.log 2>/dev/null || tail -n 100 ~/google_photos_picker.log 2>/dev/null || echo "Nenhum log disponível."
+        fi
+      `;
+      const res = await runSSH(cmd);
+      const raw = res.stdout || '';
+      const firstNl = raw.indexOf('\n');
+      const statusLine = firstNl === -1 ? raw : raw.slice(0, firstNl);
+      const running = statusLine.trim() === 'STATUS:running';
+      let logContent = firstNl === -1 ? '' : raw.slice(firstNl + 1);
 
-      // 2. Lê as últimas 100 linhas do log ativo (prioriza google_photos_picker.log se estiver rodando photos backup)
-      const logResult = await runSSH(
-        'if pgrep -f "server_photos_backup.py" >/dev/null 2>&1; then ' +
-        '  tail -n 100 ~/google_photos_picker.log 2>/dev/null; ' +
-        'else ' +
-        '  tail -n 100 ~/Automation/Apps/Backup/EngineCore/Log/progress.log 2>/dev/null || tail -n 100 ~/google_photos_picker.log 2>/dev/null || echo "Nenhum log disponível."; ' +
-        'fi'
-      );
-      let logContent = logResult.stdout || '';
-
-      // Processa os carriage returns (\r) para manter apenas a última atualização em linha
       if (logContent.includes('\r')) {
-        const lines = logContent.split('\n');
-        const processedLines = lines.map(line => {
-          if (line.includes('\r')) {
+        logContent = logContent
+          .split('\n')
+          .map((line) => {
+            if (!line.includes('\r')) return line;
             const parts = line.split('\r');
-            // Retorna o último segmento não vazio
             return parts[parts.length - 1].trim();
-          }
-          return line;
-        });
-        logContent = processedLines.join('\n');
+          })
+          .join('\n');
       }
 
-      return {
-        ok: true,
-        running,
-        log: logContent
-      };
+      return { ok: true, running, log: logContent };
     },
     request,
     'GET /api/backup/status'

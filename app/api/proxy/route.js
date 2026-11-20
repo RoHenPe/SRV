@@ -1,7 +1,25 @@
 import { NextResponse } from 'next/server';
+import { requireAuth, AuthError } from '@/lib/auth';
 import { logWarn } from '@/lib/logger';
 import { getClientIp, getClientDeviceId, getClientDeviceName, checkRateLimit } from '@/lib/rateLimit';
 import { classifyError, recordErrorFlow } from '@/lib/errorFlow';
+import { formatClientSafeError } from '@/lib/sanitize';
+
+const ALLOWED_CORS_ORIGIN = process.env.NEXT_PUBLIC_APP_ORIGIN || 'https://srvdash.vercel.app';
+
+function getCorsOrigin(request) {
+  const origin = request.headers?.get?.('origin') || '';
+  if (
+    origin === 'https://srvdash.vercel.app' ||
+    origin === 'https://srv.rhporg.app' ||
+    origin === 'https://srv-dash.rhporg.app' ||
+    origin.startsWith('http://localhost:') ||
+    origin.startsWith('http://127.0.0.1:')
+  ) {
+    return origin;
+  }
+  return ALLOWED_CORS_ORIGIN;
+}
 
 function isAllowedProxyTarget(targetUrl) {
   if (!targetUrl || !['http:', 'https:'].includes(targetUrl.protocol)) {
@@ -10,7 +28,6 @@ function isAllowedProxyTarget(targetUrl) {
   const host = (targetUrl.hostname || '').toLowerCase().trim();
   if (!host) return false;
 
-  // Block loopback, link-local (cloud metadata 169.254.169.254), and unspecified addresses
   if (
     host === 'localhost' ||
     host === '0.0.0.0' ||
@@ -23,8 +40,6 @@ function isAllowedProxyTarget(targetUrl) {
 
   const allowedHosts = new Set(
     [
-      'bore.pub',
-      '192.168.15.109',
       (process.env.SSH_HOST || '').split(':')[0].toLowerCase(),
       (process.env.SSH_HOST_VPN || '').split(':')[0].toLowerCase(),
       (process.env.SSH_HOST_LAN || '').split(':')[0].toLowerCase(),
@@ -40,15 +55,16 @@ function isAllowedProxyTarget(targetUrl) {
 }
 
 /**
- * Proxy reverso HTTPS nativo do Next.js para evitar bloqueios de Mixed Content (HTTPS -> HTTP),
- * pular tela de aviso do Ngrok e remover cabeçalhos restritivos de iframe (X-Frame-Options / CSP),
- * com proteção anti-SSRF restrita aos túneis e hosts do servidor.
+ * Proxy reverso HTTPS autenticado do Next.js (exige sessão validada por Cookie HttpOnly ou Bearer Token).
  */
 async function handleProxy(request) {
+  const corsOrigin = getCorsOrigin(request);
   try {
     if (!checkRateLimit(request, 'PROXY /api/proxy')) {
       return NextResponse.json({ ok: false, error: 'Limite de requisições excedido.' }, { status: 429 });
     }
+
+    await requireAuth(request);
 
     const { searchParams } = new URL(request.url);
     const target = searchParams.get('url');
@@ -79,7 +95,7 @@ async function handleProxy(request) {
     const headers = new Headers();
     request.headers.forEach((value, key) => {
       const k = key.toLowerCase();
-      if (!['host', 'origin', 'referer', 'connection', 'accept-encoding', 'authorization'].includes(k)) {
+      if (!['host', 'origin', 'referer', 'connection', 'accept-encoding', 'authorization', 'cookie'].includes(k)) {
         headers.set(key, value);
       }
     });
@@ -107,9 +123,10 @@ async function handleProxy(request) {
       }
       outHeaders.set(key, value);
     });
-    outHeaders.set('Access-Control-Allow-Origin', '*');
+    outHeaders.set('Access-Control-Allow-Origin', corsOrigin);
+    outHeaders.set('Access-Control-Allow-Credentials', 'true');
     outHeaders.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-    outHeaders.set('Access-Control-Allow-Headers', '*');
+    outHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Device-Id, X-Device-Name');
     outHeaders.set('X-Content-Type-Options', 'nosniff');
     outHeaders.set('Content-Security-Policy', "frame-ancestors 'self'");
 
@@ -134,6 +151,7 @@ async function handleProxy(request) {
       headers: outHeaders,
     });
   } catch (err) {
+    const status = err instanceof AuthError ? err.status : 502;
     const deviceId = getClientDeviceId(request);
     const deviceName = getClientDeviceName(request);
     const clientIp = getClientIp(request);
@@ -145,8 +163,8 @@ async function handleProxy(request) {
       selfHealed: false,
     });
     return NextResponse.json(
-      { ok: false, error: err.message, errorId: diagnosis.errorId, category: diagnosis.category },
-      { status: 502 }
+      { ok: false, error: formatClientSafeError(err, diagnosis), errorId: diagnosis.errorId, category: diagnosis.category },
+      { status }
     );
   }
 }
@@ -171,13 +189,15 @@ export async function DELETE(request) {
   return handleProxy(request);
 }
 
-export async function OPTIONS() {
+export async function OPTIONS(request) {
+  const corsOrigin = getCorsOrigin(request);
   return new NextResponse(null, {
     status: 204,
     headers: {
-      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Origin': corsOrigin,
+      'Access-Control-Allow-Credentials': 'true',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': '*',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Device-Id, X-Device-Name',
     },
   });
 }

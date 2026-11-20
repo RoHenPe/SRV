@@ -51,12 +51,10 @@ export function useApi() {
     setError(null);
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('dashboard-token') : null;
-      const sshOverride = typeof window !== 'undefined' ? localStorage.getItem('srv-ssh-override') : null;
       const { deviceId, deviceName } = getOrInitDeviceIdentity();
       const headers = {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(sshOverride ? { 'x-ssh-override': sshOverride } : {}),
         'x-device-id': deviceId,
         'x-device-name': deviceName,
         ...(options.headers || {}),

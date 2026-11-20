@@ -6,6 +6,20 @@ let cachedStatusTime = 0;
 let inFlightStatusPromise = null;
 const STATUS_CACHE_TTL_MS = 3000;
 
+function sanitizePublicTunnels(rawTunnels) {
+  const clean = {};
+  if (!rawTunnels || typeof rawTunnels !== 'object') return clean;
+  for (const [k, v] of Object.entries(rawTunnels)) {
+    if (
+      typeof v === 'string' &&
+      /^https:\/\/[-a-zA-Z0-9]+\.(?:trycloudflare\.com|ngrok(?:-free)?\.(?:app|io))$/i.test(v.trim())
+    ) {
+      clean[k] = v.trim();
+    }
+  }
+  return clean;
+}
+
 function parseStatus(stdout) {
   const lines = stdout.split('\n').map((l) => l.trim()).filter(Boolean);
 
@@ -42,7 +56,6 @@ function parseStatus(stdout) {
   lines.forEach((l) => {
     if (l.startsWith('/dev/')) {
       const parts = l.split(/\s+/);
-      const fs = parts[0];
       const size = parts[1];
       const used = parts[2];
       const avail = parts[3];
@@ -52,8 +65,8 @@ function parseStatus(stdout) {
 
       if (mount === '/' || mount.startsWith('/mnt/') || mount.startsWith('/media/')) {
         disks.push({
-          filesystem: fs,
           mount,
+          label: mount === '/' ? 'Sistema' : mount.replace(/^\/(mnt|media)\//, ''),
           total: size,
           used,
           available: avail,
@@ -68,37 +81,24 @@ function parseStatus(stdout) {
 
 async function fetchServerStatus() {
   const combinedCmd =
-    'uptime && free -m && df -h && echo "===DOCKER===" && (docker ps --format "{{.Names}}" || true) && echo "===TTYDS===" && (pgrep -f "ttyd -W -p 7685" || true) && echo "===TTYD_TERM===" && (pgrep -f "ttyd -W -p 7682" || true)';
+    'uptime && free -m && df -h && echo "===DOCKER===" && (docker ps --format "{{.Names}}" || true)';
   const result = await runSSH(combinedCmd);
 
   const parts = result.stdout.split(/===[A-Z0-9_]+===/);
   const sysStdout = parts[0] || '';
   const dockerStdout = parts[1] || '';
-  const ttydStdout = parts[2] || '';
-  const ttydTermStdout = parts[3] || '';
 
   const runningContainers = dockerStdout
     ? dockerStdout.split('\n').map((name) => name.trim()).filter(Boolean)
     : [];
 
-  if (ttydStdout.trim() && !runningContainers.includes('srv_ag_sandbox')) {
-    runningContainers.push('srv_ag_sandbox');
-  }
-
-  if (ttydTermStdout.trim() && !runningContainers.includes('srv_terminal_sandbox')) {
-    runningContainers.push('srv_terminal_sandbox');
-  }
-
   const parsed = parseStatus(sysStdout);
 
   return {
     online: result.code === 0,
-    host: result.host,
-    port: result.port,
-    route: result.route,
+    route: result.route || 'Conexão Segura',
     runningContainers,
-    activeTunnels: getCachedTunnels(),
-    storagePath: '/home/rodrigo/SRV_Storage',
+    activeTunnels: sanitizePublicTunnels(getCachedTunnels()),
     ...parsed,
   };
 }
