@@ -30,7 +30,7 @@ export async function POST(request) {
           xrandr --output VIRTUAL1 --mode "1920x1080_60" 2>/dev/null || true
           wmctrl -c "Display" 2>/dev/null || true
           wmctrl -r "Sober" -b add,hidden 2>/dev/null || true
-          if ! pgrep -f "/ubuntu12_32/steam" >/dev/null 2>&1; then
+          if ! pgrep -f "[/]ubuntu12_32/steam" >/dev/null 2>&1; then
             nohup /usr/games/steam -nominidumps -nobreakpad </dev/null >/tmp/steam_launch.log 2>&1 &
           fi
           wmctrl -r "Steam" -b remove,hidden 2>/dev/null || true

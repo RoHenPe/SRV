@@ -279,17 +279,34 @@ export default function DashboardPage() {
     }
   };
 
-  // Status fetcher
+  // Status fetcher (silent 1-retry before flipping to offline to avoid transient blips)
   const fetchStatus = useCallback(() => {
-    apiFetch('/api/status')
-      .then((data) => {
-        if (data.ok) {
-          setServerStatus(data);
-        } else {
-          setServerStatus((prev) => ({ ...(prev || {}), online: false }));
-        }
-      })
-      .catch(() => setServerStatus((prev) => ({ ...(prev || {}), online: false })));
+    const attempt = (isRetry = false) => {
+      apiFetch('/api/status')
+        .then((data) => {
+          if (data.ok && data.online) {
+            setServerStatus(data);
+          } else if (data.ok && !data.online) {
+            if (!isRetry) {
+              setTimeout(() => attempt(true), 700);
+            } else {
+              setServerStatus(data);
+            }
+          } else if (!isRetry) {
+            setTimeout(() => attempt(true), 700);
+          } else {
+            setServerStatus((prev) => ({ ...(prev || {}), online: false }));
+          }
+        })
+        .catch(() => {
+          if (!isRetry) {
+            setTimeout(() => attempt(true), 700);
+          } else {
+            setServerStatus((prev) => ({ ...(prev || {}), online: false }));
+          }
+        });
+    };
+    attempt(false);
   }, []);
 
   useEffect(() => {
