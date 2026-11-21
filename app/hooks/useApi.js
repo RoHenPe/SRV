@@ -1,16 +1,25 @@
 'use client';
 import { useState, useCallback } from 'react';
 
+export function sanitizeHeaderValue(value, fallback = 'Navegador Web') {
+  const clean = String(value || '')
+    .replace(/[^\x20-\x7E]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return clean || fallback;
+}
+
 export function getOrInitDeviceIdentity() {
   if (typeof window === 'undefined') {
     return { deviceId: 'server-ssr', deviceName: 'SSR' };
   }
-  let deviceId = localStorage.getItem('srv-device-id');
+  let deviceId = sanitizeHeaderValue(localStorage.getItem('srv-device-id'), '');
   if (!deviceId) {
     deviceId = `dev-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     localStorage.setItem('srv-device-id', deviceId);
   }
-  let deviceName = localStorage.getItem('srv-device-name');
+  const storedName = localStorage.getItem('srv-device-name');
+  let deviceName = storedName ? sanitizeHeaderValue(storedName, '') : '';
   if (!deviceName) {
     const ua = navigator.userAgent || '';
     const platform = /Android/i.test(ua)
@@ -33,7 +42,9 @@ export function getOrInitDeviceIdentity() {
       : /Safari\//i.test(ua)
       ? 'Safari'
       : 'Browser';
-    deviceName = `${platform} • ${browser} (${deviceId.slice(-4)})`;
+    deviceName = `${platform} - ${browser} (${deviceId.slice(-4)})`;
+    localStorage.setItem('srv-device-name', deviceName);
+  } else if (storedName !== deviceName) {
     localStorage.setItem('srv-device-name', deviceName);
   }
   return { deviceId, deviceName };
@@ -50,13 +61,13 @@ export function useApi() {
     setLoading(true);
     setError(null);
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('dashboard-token') : null;
+      const token = typeof window !== 'undefined' ? sanitizeHeaderValue(localStorage.getItem('dashboard-token'), '') : '';
       const { deviceId, deviceName } = getOrInitDeviceIdentity();
       const headers = {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        'x-device-id': deviceId,
-        'x-device-name': deviceName,
+        'x-device-id': sanitizeHeaderValue(deviceId, 'default-device'),
+        'x-device-name': sanitizeHeaderValue(deviceName, 'Navegador Web'),
         ...(options.headers || {}),
       };
 

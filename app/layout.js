@@ -87,6 +87,7 @@ export default function RootLayout({ children }) {
                           .replace(/margin-inline:([^;\\}]+)/g, 'margin-left:$1;margin-right:$1')
                           .replace(/margin-block:([^;\\}]+)/g, 'margin-top:$1;margin-bottom:$1')
                           .replace(/([\\{;])inset:0(px)?([;\\}])/g, '$1top:0;right:0;bottom:0;left:0$3')
+                          .replace(/url\((['"]?)\.\.\/media\//g, 'url($1/_next/static/media/')
                           .replace(/100dvh/g, '100vh');
                         var s = document.createElement('style');
                         s.textContent = flat;

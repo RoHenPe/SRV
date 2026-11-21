@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getOrInitDeviceIdentity } from '../hooks/useApi';
+import { getOrInitDeviceIdentity, sanitizeHeaderValue } from '../hooks/useApi';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -16,7 +16,9 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      const { deviceId, deviceName } = getOrInitDeviceIdentity();
+      const identity = getOrInitDeviceIdentity();
+      const deviceId = sanitizeHeaderValue(identity.deviceId, 'default-device');
+      const deviceName = sanitizeHeaderValue(identity.deviceName, 'Navegador Web');
       const res = await fetch('/api/auth/validate', {
         method: 'POST',
         headers: {

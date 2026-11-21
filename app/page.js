@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import ConfirmModal from './components/ConfirmModal';
-import { getOrInitDeviceIdentity } from './hooks/useApi';
+import { getOrInitDeviceIdentity, sanitizeHeaderValue } from './hooks/useApi';
 
 // ─── UTILS ──────────────────────────────────────────────────────────────────
 function parseUptime(output) {
@@ -28,14 +28,15 @@ function parseUptime(output) {
 }
 
 async function apiFetch(url, options = {}) {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('dashboard-token') : null;
+  const rawToken = typeof window !== 'undefined' ? localStorage.getItem('dashboard-token') : null;
+  const token = rawToken ? sanitizeHeaderValue(rawToken, '') : null;
   let deviceId = 'default-device';
   let deviceName = 'Navegador Web';
   if (typeof window !== 'undefined') {
     localStorage.removeItem('srv-ssh-override');
     const identity = getOrInitDeviceIdentity();
-    deviceId = identity.deviceId;
-    deviceName = identity.deviceName;
+    deviceId = sanitizeHeaderValue(identity.deviceId, 'default-device');
+    deviceName = sanitizeHeaderValue(identity.deviceName, 'Navegador Web');
   }
   const headers = {
     'Content-Type': 'application/json',
@@ -218,11 +219,14 @@ export default function DashboardPage() {
       }
 
       try {
-        const { deviceId, deviceName } = getOrInitDeviceIdentity();
+        const identity = getOrInitDeviceIdentity();
+        const deviceId = sanitizeHeaderValue(identity.deviceId, 'default-device');
+        const deviceName = sanitizeHeaderValue(identity.deviceName, 'Navegador Web');
+        const safeToken = sanitizeHeaderValue(token, '');
         const res = await fetch('/api/auth/validate', {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${token}`,
+            'Authorization': `Bearer ${safeToken}`,
             'Content-Type': 'application/json',
             'x-device-id': deviceId,
             'x-device-name': deviceName,
