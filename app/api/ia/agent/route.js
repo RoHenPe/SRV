@@ -53,9 +53,9 @@ export async function POST(request) {
       } else if (engine === 'local-llm' || engine === 'gemma4') {
         cmd = `
           systemctl is-active --quiet ollama || sudo -n systemctl start ollama 2>/dev/null || true
-          MODEL_NAME=$(ollama ps 2>/dev/null | awk 'NR>1 {print $1}' | head -n 1)
+          MODEL_NAME=$(ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -iE '^ia-core|^qwen2.5-coder:3b' | head -n 1)
           if [ -z "$MODEL_NAME" ]; then
-            MODEL_NAME=$(ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -iE '^ia-core|^qwen2.5-coder:3b|^gemma' | head -n 1)
+            MODEL_NAME=$(ollama ps 2>/dev/null | awk 'NR>1 {print $1}' | head -n 1)
           fi
           MODEL_NAME=\${MODEL_NAME:-ia-core:latest}
           python3 -c "import json, urllib.request, base64; p = base64.b64decode('${b64Prompt}').decode('utf-8'); req = urllib.request.Request('http://127.0.0.1:11434/api/generate', data=json.dumps({'model': '$MODEL_NAME', 'prompt': p, 'stream': False, 'keep_alive': '24h', 'options': {'num_ctx': 1024, 'num_predict': 256}}).encode('utf-8'), headers={'Content-Type': 'application/json'}); print(json.loads(urllib.request.urlopen(req, timeout=35).read().decode('utf-8')).get('response', ''))" 2>&1

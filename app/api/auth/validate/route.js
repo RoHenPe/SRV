@@ -65,12 +65,15 @@ export async function POST(request) {
           resetRevoked: true,
           forcePersist: true,
         });
-        await logAction('auth.login', 'success', {
-          user: 'admin',
-          deviceId: resolvedDeviceId,
-          deviceName: resolvedDeviceName,
-          ip,
-        });
+        await Promise.race([
+          logAction('auth.login', 'success', {
+            user: 'admin',
+            deviceId: resolvedDeviceId,
+            deviceName: resolvedDeviceName,
+            ip,
+          }).catch(() => {}),
+          new Promise((r) => setTimeout(r, 1500)),
+        ]);
         const cookieVal = createSessionCookieValue('admin', 'admin');
         const sessionToken = createSessionToken('admin', 'admin');
         const headers = new Headers();
@@ -114,12 +117,15 @@ export async function POST(request) {
         forcePersist: true,
       });
 
-      await logAction('auth.login', 'success', {
-        user: user.username,
-        deviceId: resolvedDeviceId,
-        deviceName: resolvedDeviceName,
-        ip,
-      });
+      await Promise.race([
+        logAction('auth.login', 'success', {
+          user: user.username,
+          deviceId: resolvedDeviceId,
+          deviceName: resolvedDeviceName,
+          ip,
+        }).catch(() => {}),
+        new Promise((r) => setTimeout(r, 1500)),
+      ]);
 
       const cookieVal = createSessionCookieValue(user.username, role);
       const headers = new Headers();

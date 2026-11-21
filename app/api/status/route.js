@@ -81,8 +81,8 @@ function parseStatus(stdout) {
 
 async function fetchServerStatus() {
   const combinedCmd =
-    'uptime && free -m && df -h && echo "===DOCKER===" && (docker ps --format "{{.Names}}" || true) && echo "===TUNNELS===" && (cat ~/.cloudflare_tunnels.json 2>/dev/null || echo "{}")';
-  const result = await runSSH(combinedCmd);
+    'uptime && free -m && (timeout 4 df -lhP -x overlay -x tmpfs -x devtmpfs -x squashfs 2>/dev/null || df -h) && echo "===DOCKER===" && (timeout 5 docker ps --format "{{.Names}}" || true) && echo "===TUNNELS===" && (cat ~/.cloudflare_tunnels.json 2>/dev/null || echo "{}")';
+  const result = await runSSH(combinedCmd, 18000);
 
   const parts = result.stdout.split(/===[A-Z0-9_]+===/);
   const sysStdout = parts[0] || '';
@@ -109,9 +109,13 @@ async function fetchServerStatus() {
     : [];
 
   const parsed = parseStatus(sysStdout);
+  const online = Boolean(parsed.uptime) && result.code === 0;
+  if (!online) {
+    throw new Error(result.stderr || 'Telemetria do servidor temporariamente indisponível.');
+  }
 
   return {
-    online: result.code === 0,
+    online: true,
     route: result.route || 'Conexão Segura',
     runningContainers,
     activeTunnels: sanitizePublicTunnels({ ...fileTunnels, ...getCachedTunnels() }),
@@ -127,7 +131,7 @@ export async function GET(request) {
       const now = Date.now();
 
       if (!forceRefresh && cachedStatusData && now - cachedStatusTime < STATUS_CACHE_TTL_MS) {
-        const sessions = await getActiveSessions();
+        const sessions = await getActiveSessions(false);
         return {
           ...cachedStatusData,
           activeDevices: sessions.filter((s) => s.online).length,
@@ -138,8 +142,10 @@ export async function GET(request) {
       if (!inFlightStatusPromise) {
         inFlightStatusPromise = fetchServerStatus()
           .then((data) => {
-            cachedStatusData = data;
-            cachedStatusTime = Date.now();
+            if (data?.online) {
+              cachedStatusData = data;
+              cachedStatusTime = Date.now();
+            }
             return data;
           })
           .finally(() => {
@@ -148,7 +154,7 @@ export async function GET(request) {
       }
 
       const data = await inFlightStatusPromise;
-      const sessions = await getActiveSessions();
+      const sessions = await getActiveSessions(false);
       return {
         ...data,
         activeDevices: sessions.filter((s) => s.online).length,

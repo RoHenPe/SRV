@@ -7,7 +7,17 @@ export async function GET(request) {
       let ollamaOutput = '';
       try {
         const result = await runSSH('(systemctl is-active --quiet ollama || sudo systemctl start ollama 2>/dev/null || true) && ollama list');
-        ollamaOutput = result.stdout || '';
+        const rawLines = (result.stdout || '').split('\n').filter((l) => l.trim());
+        if (rawLines.length > 1) {
+          const [header, ...rows] = rawLines;
+          rows.sort((a, b) => {
+            const score = (line) => (/^ia-core\b/i.test(line) ? 0 : /:3b\b/i.test(line) ? 1 : 2);
+            return score(a) - score(b);
+          });
+          ollamaOutput = [header, ...rows].join('\n');
+        } else {
+          ollamaOutput = result.stdout || '';
+        }
       } catch (e) {
         console.warn('Ollama offline ou inalcançável:', e.message);
       }

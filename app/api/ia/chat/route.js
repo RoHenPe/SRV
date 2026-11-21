@@ -83,21 +83,22 @@ export async function POST(request) {
         ? messages
         : [systemMessage, ...messages];
 
+      const isLightLocal = /^ia-core\b|:3b\b/i.test(model);
       const jsonPayload = JSON.stringify({
         model,
         messages: enrichedMessages,
         stream: false,
-        keep_alive: '24h',
+        keep_alive: isLightLocal ? '24h' : '2m',
         options: {
           num_ctx: 1024,
-          num_predict: 384,
+          num_predict: 256,
         },
       });
 
       const b64Payload = Buffer.from(jsonPayload).toString('base64');
-      const cmd = `(systemctl is-active --quiet ollama || sudo -n systemctl start ollama 2>/dev/null || true) && echo "${b64Payload}" | base64 -d | curl -s -X POST http://127.0.0.1:11434/api/chat -H "Content-Type: application/json" -d @-`;
+      const cmd = `(systemctl is-active --quiet ollama || sudo -n systemctl start ollama 2>/dev/null || true) && echo "${b64Payload}" | base64 -d | curl -s --max-time 45 -X POST http://127.0.0.1:11434/api/chat -H "Content-Type: application/json" -d @-`;
 
-      const result = await runSSH(cmd, 45000);
+      const result = await runSSH(cmd, 50000);
       if (result.code !== 0) {
         throw new Error('Serviço Ollama indisponível no momento.');
       }
