@@ -4,6 +4,7 @@ import {
   extractToken,
   getUsers,
   verifyPassword,
+  verifyBootstrapAdminCredentials,
   touchDeviceSession,
   createSessionCookieValue,
   createSessionToken,
@@ -21,7 +22,7 @@ function isHttpsRequest(request) {
 }
 
 function timingSafeMatchesEnvKey(value) {
-  const envKey = process.env.API_KEY;
+  const envKey = (process.env.API_KEY || '').replace(/\\n|\\r/g, '').trim().replace(/^['"]|['"]$/g, '').trim();
   if (!envKey || typeof value !== 'string' || value.length !== envKey.length) return false;
   return crypto.timingSafeEqual(Buffer.from(value, 'utf-8'), Buffer.from(envKey, 'utf-8'));
 }
@@ -50,7 +51,11 @@ export async function POST(request) {
     const resolvedDeviceName = body.deviceName || deviceName;
 
     if (body.username && body.password) {
-      if (timingSafeMatchesEnvKey(body.password) || timingSafeMatchesEnvKey(body.username)) {
+      if (
+        timingSafeMatchesEnvKey(body.password) ||
+        timingSafeMatchesEnvKey(body.username) ||
+        verifyBootstrapAdminCredentials(body.username, body.password)
+      ) {
         await touchDeviceSession({
           deviceId: resolvedDeviceId,
           deviceName: resolvedDeviceName,

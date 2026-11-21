@@ -1,10 +1,32 @@
 'use client';
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import ConfirmModal from './components/ConfirmModal';
 import { getOrInitDeviceIdentity } from './hooks/useApi';
 
-// ─── API FETCH WITH DEVICE IDENTITY ─────────────────────────────────────────
+// ─── UTILS ──────────────────────────────────────────────────────────────────
+function parseUptime(output) {
+  if (!output) return null;
+  const lines = output.split('\n');
+  if (lines.length < 2) return null;
+  const uptimeLine = lines[1];
+  
+  const upIndex = uptimeLine.indexOf('up');
+  if (upIndex === -1) return null;
+  
+  const fromUp = uptimeLine.substring(upIndex + 3);
+  const commaIndex = fromUp.indexOf(',');
+  const uptimeStr = commaIndex !== -1 ? fromUp.substring(0, commaIndex).trim() : fromUp.trim();
+  
+  const loadIndex = uptimeLine.indexOf('load average:');
+  const loadStr = loadIndex !== -1 ? uptimeLine.substring(loadIndex + 13).trim() : null;
+  
+  return {
+    uptime: uptimeStr,
+    load: loadStr,
+  };
+}
+
 async function apiFetch(url, options = {}) {
   const token = typeof window !== 'undefined' ? localStorage.getItem('dashboard-token') : null;
   let deviceId = 'default-device';
@@ -17,7 +39,7 @@ async function apiFetch(url, options = {}) {
   }
   const headers = {
     'Content-Type': 'application/json',
-    ...(token && { Authorization: `Bearer ${token}` }),
+    ...(token && { 'Authorization': `Bearer ${token}` }),
     'x-device-id': deviceId,
     'x-device-name': deviceName,
     ...options.headers,
@@ -81,16 +103,13 @@ function useToast() {
 export default function DashboardPage() {
   const router = useRouter();
   const { toasts, addToast, removeToast } = useToast();
-
+  
   const [serverStatus, setServerStatus] = useState(null);
   const [theme, setTheme] = useState('light');
-  const [authValid, setAuthValid] = useState(false);
-  const [authChecking, setAuthChecking] = useState(true);
+  const [authValid, setAuthValid] = useState(typeof window !== 'undefined' ? !!localStorage.getItem('dashboard-token') : false);
   const [userRole, setUserRole] = useState('admin');
-  const [activeTab, setActiveTab] = useState('home');
+  const [activeTab, setActiveTab] = useState('home'); // home, docker, ia, backup, users, maintenance, or app config
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  // Confirm modal state (replaces window.confirm for TV/PWA/Mobile compatibility)
   const [confirmState, setConfirmState] = useState({
     isOpen: false,
     title: '',
@@ -165,31 +184,31 @@ export default function DashboardPage() {
     return () => clearInterval(timer);
   }, [activeTab, activeApp, iframeUrl]);
 
-  // Applications definitions
+  // Sandbox Applications definitions
   const apps = [
-    { id: 'vscode',      name: 'VS Code',     icon: 'code',             type: 'sandbox', port: 8443 },
-    { id: 'webtop',      name: 'Webtop',      icon: 'desktop_windows',  type: 'sandbox', port: 3000 },
-    { id: 'steam',       name: 'Steam',       icon: 'sports_esports',   type: 'sandbox', port: 8083, path: '/web/?autoconnect=true&resize=scale' },
-    { id: 'roblox',      name: 'Roblox',      icon: 'videogame_asset',  type: 'sandbox', port: 8083, path: '/web/?autoconnect=true&resize=scale', containerName: 'srv_steam_sandbox' },
-    { id: 'erp',         name: 'ERP',         icon: 'storefront',       type: 'service', serviceName: 'srv_erp_mercados', containerName: 'srv_erp_mercados', port: 8090 },
-    { id: 'filebrowser', name: 'Arquivos',    icon: 'folder_open',      type: 'sandbox', port: 8089, path: '/files/SRV_Storage/' },
-    { id: 'kdenlive',    name: 'Kdenlive',    icon: 'movie',            type: 'sandbox', port: 3005 },
-    { id: 'neovim',      name: 'Neovim',      icon: 'edit_note',        type: 'sandbox', port: 7683 },
-    { id: 'antigravity', name: 'Antigravity', icon: 'vpn_key',          type: 'sandbox', port: 7685 },
-    { id: 'terminal',    name: 'Terminal',    icon: 'terminal',         type: 'sandbox', port: 7682 },
-    { id: 'ttyd',        name: 'Monitor',     icon: 'monitoring',       type: 'service', serviceName: 'ttyd', containerName: 'srv_monitor', port: 7681 },
-    { id: 'cockpit',     name: 'Cockpit',     icon: 'web',              type: 'static',  port: 9090, protocol: 'https:' },
-    { id: 'cups',        name: 'Impressora',  icon: 'print',            type: 'service', serviceName: 'cups', containerName: 'cupsd', port: 631 },
-    { id: 'scanner',     name: 'Scanner',     icon: 'document_scanner', type: 'service', serviceName: 'scanner', containerName: 'scanservjs', port: 8080 },
-    { id: 'metabase',    name: 'Metabase',    icon: 'analytics',        type: 'service', serviceName: 'srv_metabase', containerName: 'srv_metabase', port: 3003 },
-    { id: 'jupyter',     name: 'Jupyter',     icon: 'science',          type: 'service', serviceName: 'srv_jupyter_spark', containerName: 'srv_jupyter_spark', port: 8888, path: '/lab', requiresAuthResolve: true },
-    { id: 'onlyoffice',  name: 'Documentos',  icon: 'description',      type: 'service', serviceName: 'srv_onlyoffice', containerName: 'srv_onlyoffice', port: 8086, path: '/example/' },
-    { id: 'emulator',    name: 'Android',     icon: 'phone_android',    type: 'service', serviceName: 'emulator', containerName: 'emulator-android-container-1', port: 6081, path: '/?autoconnect=true&resize=scale' },
-    { id: 'jarvis',      name: 'Jarvis',      icon: 'smart_toy',        type: 'service', serviceName: 'jarvis', containerName: 'open-webui', port: 3010 },
-    { id: 'windows',     name: 'Windows',     icon: 'window',           type: 'service', serviceName: 'win10', containerName: 'win10_teste', port: 8006 },
+    { id: 'vscode',      name: 'VS Code',            icon: 'code',              type: 'sandbox', port: 8443 },
+    { id: 'webtop',      name: 'Webtop',              icon: 'desktop_windows',   type: 'sandbox', port: 3000 },
+    { id: 'steam',       name: 'Steam',               icon: 'sports_esports',    type: 'sandbox', port: 8083, path: '/web/?autoconnect=true&resize=scale' },
+    { id: 'roblox',      name: 'Roblox',              icon: 'videogame_asset',   type: 'sandbox', port: 8083, path: '/web/?autoconnect=true&resize=scale', containerName: 'srv_steam_sandbox' },
+    { id: 'erp',         name: 'ERP',                 icon: 'storefront',        type: 'service', serviceName: 'srv_erp_mercados', containerName: 'srv_erp_mercados',   port: 8090 },
+    { id: 'filebrowser', name: 'Arquivos',             icon: 'folder_open',       type: 'sandbox', port: 8089, path: '/files/SRV_Storage/' },
+    { id: 'kdenlive',    name: 'Kdenlive',             icon: 'movie',             type: 'sandbox', port: 3005 },
+    { id: 'neovim',      name: 'Neovim',               icon: 'edit_note',         type: 'sandbox', port: 7683 },
+    { id: 'antigravity', name: 'Antigravity',          icon: 'vpn_key',           type: 'sandbox', port: 7685 },
+    { id: 'terminal',    name: 'Terminal',             icon: 'terminal',          type: 'sandbox', port: 7682 },
+    { id: 'ttyd',        name: 'Monitor',              icon: 'monitoring',        type: 'service', serviceName: 'ttyd',             containerName: 'srv_monitor',        port: 7681 },
+    { id: 'cockpit',     name: 'Cockpit',              icon: 'web',               type: 'static',  port: 9090, protocol: 'https:' },
+    { id: 'cups',        name: 'Impressora',           icon: 'print',             type: 'service', serviceName: 'cups',             containerName: 'cupsd',              port: 631 },
+    { id: 'scanner',     name: 'Scanner',              icon: 'document_scanner',  type: 'service', serviceName: 'scanner',          containerName: 'scanservjs',         port: 8080 },
+    { id: 'metabase',    name: 'Metabase',             icon: 'analytics',         type: 'service', serviceName: 'srv_metabase',     containerName: 'srv_metabase',       port: 3003 },
+    { id: 'jupyter',     name: 'Jupyter',              icon: 'science',           type: 'service', serviceName: 'srv_jupyter_spark',containerName: 'srv_jupyter_spark',  port: 8888, path: '/lab', requiresAuthResolve: true },
+    { id: 'onlyoffice',  name: 'Documentos',           icon: 'description',       type: 'service', serviceName: 'srv_onlyoffice',   containerName: 'srv_onlyoffice',     port: 8086, path: '/example/' },
+    { id: 'emulator',    name: 'Android',              icon: 'phone_android',     type: 'service', serviceName: 'emulator',         containerName: 'emulator-android-container-1', port: 6081, path: '/?autoconnect=true&resize=scale' },
+    { id: 'jarvis',      name: 'Jarvis',               icon: 'smart_toy',         type: 'service', serviceName: 'jarvis',           containerName: 'open-webui',         port: 3010 },
+    { id: 'windows',     name: 'Windows',              icon: 'window',            type: 'service', serviceName: 'win10',            containerName: 'win10_teste',        port: 8006 },
   ];
 
-  // Auth check (only kicks to /login on explicit 401 or missing token — survives brief network hiccups)
+  // Auth check
   useEffect(() => {
     const validateAuth = async () => {
       const token = localStorage.getItem('dashboard-token');
@@ -203,7 +222,7 @@ export default function DashboardPage() {
         const res = await fetch('/api/auth/validate', {
           method: 'POST',
           headers: {
-            Authorization: `Bearer ${token}`,
+            'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
             'x-device-id': deviceId,
             'x-device-name': deviceName,
@@ -211,7 +230,7 @@ export default function DashboardPage() {
           body: JSON.stringify({ deviceId, deviceName, activeView: 'home' }),
         });
 
-        if (res.status === 401) {
+        if (res.status === 401 || res.status === 403) {
           localStorage.removeItem('dashboard-token');
           window.location.href = '/login';
           return;
@@ -222,14 +241,10 @@ export default function DashboardPage() {
           setUserRole(data.role || 'admin');
           setAuthValid(true);
         } else {
-          localStorage.removeItem('dashboard-token');
-          window.location.href = '/login';
+          setAuthValid(true);
         }
       } catch {
-        // Transient network error: keep token locally and allow UI to retry
         setAuthValid(true);
-      } finally {
-        setAuthChecking(false);
       }
     };
 
@@ -297,17 +312,17 @@ export default function DashboardPage() {
     router.push('/login');
   };
 
-  const isRunning = useCallback(
-    (app) => {
-      if (!serverStatus?.runningContainers) return false;
-      if (app.type === 'static') return Boolean(serverStatus?.online);
-      const containerName = app.containerName || `srv_${app.id}_sandbox`;
-      return serverStatus.runningContainers.some(
-        (c) => c.toLowerCase() === containerName.toLowerCase() || c.toLowerCase().includes(containerName.toLowerCase())
-      );
-    },
-    [serverStatus]
-  );
+  const isAdmin = userRole === 'admin';
+
+  const isRunning = useCallback((app) => {
+    if (!serverStatus?.runningContainers) return false;
+    if (app.type === 'static') return Boolean(serverStatus?.online);
+    // Use containerName from app definition when available, fallback to sandbox pattern
+    const containerName = app.containerName || `srv_${app.id}_sandbox`;
+    return serverStatus.runningContainers.some(c =>
+      c.toLowerCase() === containerName.toLowerCase() || c.toLowerCase().includes(containerName.toLowerCase())
+    );
+  }, [serverStatus]);
 
   // Sandbox/Service Launcher
   const selectApp = async (app) => {
@@ -324,8 +339,8 @@ export default function DashboardPage() {
 
     const isContainerRunning = (name) => {
       if (!serverStatus?.runningContainers) return false;
-      return serverStatus.runningContainers.some(
-        (c) => c.toLowerCase() === name.toLowerCase() || c.toLowerCase().includes(name.toLowerCase())
+      return serverStatus.runningContainers.some(c =>
+        c.toLowerCase() === name.toLowerCase() || c.toLowerCase().includes(name.toLowerCase())
       );
     };
 
@@ -336,7 +351,7 @@ export default function DashboardPage() {
     const isLocal = isIPOrLocalhost(directHost);
     const isLocalHttp = isLocal && window.location.protocol === 'http:';
 
-    // Fast path: if app is already running and pre-warmed tunnel URL exists, open immediately
+    // Fast path: if app is already running and pre-warmed tunnel URL is in serverStatus.activeTunnels, open immediately!
     const prewarmedTunnel = !isLocalHttp && !app.requiresAuthResolve ? serverStatus?.activeTunnels?.[String(app.port)] : null;
     const appAlreadyUp = app.type === 'static' || isRunning(app);
     if (appAlreadyUp && prewarmedTunnel && app.id !== 'roblox' && app.id !== 'steam') {
@@ -354,7 +369,7 @@ export default function DashboardPage() {
     }
 
     const resolveUrl = async () => {
-      setLaunchMessage('Conectando túnel seguro...');
+      setLaunchMessage('Conectando...');
       try {
         const tunRes = await apiFetch('/api/tunnel', {
           method: 'POST',
@@ -379,12 +394,14 @@ export default function DashboardPage() {
       return targetUrl;
     };
 
+    // If it's a sandbox, start/check it
     if (app.type === 'sandbox') {
       setLaunching(true);
       setLaunchMessage(`Iniciando ${app.name}...`);
       try {
         const res = await apiFetch(`/api/sandbox/${app.id}`, { method: 'POST' });
         if (res.ok) {
+          setLaunchMessage('Conectando...');
           const finalUrl = await resolveUrl();
           setIframeUrl(finalUrl);
           setLaunching(false);
@@ -399,13 +416,15 @@ export default function DashboardPage() {
         setLaunching(false);
         setActiveTab('home');
       }
-    } else if (app.type === 'service') {
+    } 
+    // Docker Compose service — check by containerName (defined in apps array)
+    else if (app.type === 'service') {
       const containerName = app.containerName || `srv_${app.id}`;
       const running = isContainerRunning(containerName);
 
       if (running) {
         setLaunching(true);
-        setLaunchMessage(`Conectando ${app.name}...`);
+        setLaunchMessage('Conectando...');
         try {
           const finalUrl = await resolveUrl();
           setIframeUrl(finalUrl);
@@ -417,14 +436,13 @@ export default function DashboardPage() {
         }
       } else {
         setLaunching(true);
-        setLaunchMessage(`Iniciando serviço ${app.name}...`);
+        setLaunchMessage(`Iniciando ${app.name}...`);
         try {
           const res = await apiFetch('/api/services', {
             method: 'POST',
-            body: JSON.stringify({ service: app.serviceName, action: 'start' }),
+            body: JSON.stringify({ service: app.serviceName, action: 'start' })
           });
           if (res.ok) {
-            setLaunchMessage(`Aguardando ${app.name} responder...`);
             setTimeout(async () => {
               try {
                 const finalUrl = await resolveUrl();
@@ -448,9 +466,11 @@ export default function DashboardPage() {
           setActiveTab('home');
         }
       }
-    } else {
+    } 
+    // Static app
+    else {
       setLaunching(true);
-      setLaunchMessage(`Conectando ${app.name}...`);
+      setLaunchMessage('Conectando...');
       try {
         const finalUrl = await resolveUrl();
         setIframeUrl(finalUrl);
@@ -472,7 +492,7 @@ export default function DashboardPage() {
       return /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(h) || h.endsWith('.local');
     };
     if (!isIPOrLocalhost(window.location.hostname)) {
-      apiFetch('/api/tunnel', { method: 'POST', body: JSON.stringify({ action: 'stop' }) }).catch(() => {});
+      apiFetch('/api/tunnel', { method: 'POST', body: JSON.stringify({ action: 'stop' }) }).catch(()=>{});
     }
   };
 
@@ -483,14 +503,14 @@ export default function DashboardPage() {
   };
 
   const stopActiveAppContainer = () => {
-    if (!activeApp || activeApp.type === 'static') return;
+    if (!activeApp) return;
     askConfirm({
-      title: `Parar ${activeApp.name}`,
-      message: `Deseja realmente parar o contêiner do aplicativo ${activeApp.name}?`,
+      title: 'Parar aplicativo',
+      message: `Deseja realmente parar o contêiner de ${activeApp.name}?`,
       danger: true,
       onConfirm: async () => {
         setLaunching(true);
-        setLaunchMessage(`Parando ${activeApp.name}...`);
+        setLaunchMessage('Parando...');
         try {
           let endpoint = '';
           let body = {};
@@ -511,7 +531,7 @@ export default function DashboardPage() {
           if (endpoint) {
             const res = await apiFetch(endpoint, {
               method: 'POST',
-              body: JSON.stringify(body),
+              body: JSON.stringify(body)
             });
             if (res.ok) {
               addToast(`Aplicativo ${activeApp.name} parado.`, 'success');
@@ -529,75 +549,52 @@ export default function DashboardPage() {
     });
   };
 
-  if (authChecking || !authValid) {
-    return (
-      <div className="min-h-screen bg-[var(--md-sys-color-background)] flex items-center justify-center text-xs text-[var(--md-sys-color-on-surface-variant)] gap-2">
-        <span className="material-symbols-outlined animate-spin text-base text-[var(--md-sys-color-primary)]">autorenew</span>
-        <span>Validando sessão...</span>
-      </div>
-    );
+  if (!authValid) {
+    return null;
   }
 
-  const allNavTabs = [
-    { id: 'home', name: 'Início', icon: 'home' },
-    { id: 'docker', name: 'Docker', icon: 'view_in_ar' },
-    { id: 'vm', name: 'VM', icon: 'computer' },
-    { id: 'ia', name: 'IA', icon: 'psychology' },
-    { id: 'backup', name: 'Backup', icon: 'cloud_sync' },
-    { id: 'users', name: 'Contas', icon: 'group' },
-    { id: 'maintenance', name: 'Ajustes', icon: 'build', adminOnly: true },
-  ];
-  const isAdmin = userRole === 'admin';
-  const navTabs = allNavTabs.filter((t) => !t.adminOnly || isAdmin);
+  const isOnline = serverStatus?.online;
 
   return (
     <div className="flex flex-col h-screen bg-[var(--md-sys-color-background)] overflow-hidden text-[var(--md-sys-color-on-background)] relative">
       {/* Barra de Cabeçalho Superior para Celular */}
-      <header
-        className={`md:hidden h-[calc(3.5rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] border-b border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex items-center justify-between pl-[calc(1rem+env(safe-area-inset-left))] pr-[calc(1rem+env(safe-area-inset-right))] flex-shrink-0 z-20 ${
-          activeTab === 'app' ? 'hidden' : 'flex'
-        }`}
-      >
-        <button
-          onClick={() => setMobileMenuOpen(true)}
+      <header className={`md:hidden h-[calc(3.5rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] border-b border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex items-center justify-between pl-[calc(1rem+env(safe-area-inset-left))] pr-[calc(1rem+env(safe-area-inset-right))] flex-shrink-0 z-20 ${
+        activeTab === 'app' ? 'hidden' : 'flex'
+      }`}>
+        <button 
+          onClick={() => setMobileMenuOpen(true)} 
           className="w-9 h-9 rounded-xl flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)] hover:bg-black/5"
         >
           <span className="material-symbols-outlined text-xl">menu</span>
         </button>
-        <div className="flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full ${serverStatus?.online ? 'bg-[var(--md-sys-color-tertiary)]' : 'bg-[var(--md-sys-color-error)]'}`} />
-          <span className="font-bold tracking-tight text-sm google-sans">SRV</span>
-        </div>
-        <button
-          onClick={toggleTheme}
-          className="w-9 h-9 rounded-xl flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)] hover:bg-black/5"
-          title="Alternar tema"
-        >
-          <span className="material-symbols-outlined text-lg">{theme === 'dark' ? 'light_mode' : 'dark_mode'}</span>
-        </button>
+        <span className="font-bold tracking-tight text-sm google-sans">SRV</span>
+        <div className="w-9 h-9" />
       </header>
 
       <div className={`flex flex-1 h-full overflow-hidden relative ${mobileMenuOpen ? 'z-50' : 'z-10'}`}>
-        {/* ─── SIDEBAR ──────────────────────────────────────────────────────── */}
-        <aside
-          className={`border-r border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex flex-col justify-between flex-shrink-0 z-50 transition-all duration-200 w-[calc(4rem+env(safe-area-inset-left))] pl-[env(safe-area-inset-left)] ${
-            mobileMenuOpen ? 'fixed inset-y-0 left-0' : 'hidden md:flex'
-          }`}
-        >
+        {/* ─── SIDEBAR (Desktop/Mobile Collapsed) ────────────────────────────────── */}
+        <aside className={`border-r border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex flex-col justify-between flex-shrink-0 z-50 transition-all duration-200 w-[calc(4rem+env(safe-area-inset-left))] pl-[env(safe-area-inset-left)] ${
+          mobileMenuOpen ? 'fixed inset-y-0 left-0' : 'hidden md:flex'
+        }`}>
           <div className="flex flex-col flex-1 overflow-y-auto pt-[env(safe-area-inset-top)]">
+            {/* Brand header */}
             <div className="flex items-center justify-center py-4 border-b border-[var(--md-sys-color-surface-variant)] relative">
               <div className="w-10 h-10 rounded-xl bg-[var(--md-sys-color-primary-container)] flex items-center justify-center relative">
                 <span className="material-symbols-outlined text-[var(--md-sys-color-on-primary-container)] text-lg icon-filled">dns</span>
-                <span
-                  className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[var(--md-sys-color-surface)] ${
-                    serverStatus?.online ? 'bg-[var(--md-sys-color-tertiary)]' : 'bg-[var(--md-sys-color-error)]'
-                  }`}
-                />
               </div>
             </div>
 
+            {/* Navigation Menu */}
             <div className="px-2 py-4 flex flex-col items-center gap-1.5 overflow-y-auto flex-1 w-full">
-              {navTabs.map((tab) => (
+              {[
+                { id: 'home', name: 'Início', icon: 'home' },
+                { id: 'docker', name: 'Docker', icon: 'view_in_ar' },
+                { id: 'vm', name: 'VM', icon: 'computer' },
+                { id: 'ia', name: 'IA', icon: 'psychology' },
+                { id: 'backup', name: 'Backup', icon: 'cloud_sync' },
+                { id: 'users', name: 'Contas', icon: 'group' },
+                { id: 'maintenance', name: 'Ajustes', icon: 'build' }
+              ].filter((t) => (t.id !== 'users' && t.id !== 'maintenance') || isAdmin).map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => {
@@ -618,133 +615,96 @@ export default function DashboardPage() {
                 </button>
               ))}
 
-              <div className="w-6 border-t border-[var(--md-sys-color-surface-variant)] my-1" />
-
-              {apps.map((app) => {
-                const active = isRunning(app);
-                return (
-                  <button
-                    key={app.id}
-                    onClick={() => selectApp(app)}
-                    title={`${app.name}${active ? ' (Ativo)' : ''}`}
-                    className={`w-10 h-10 flex-shrink-0 rounded-xl flex items-center justify-center transition-all relative ${
-                      activeTab === 'app' && activeApp?.id === app.id
-                        ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)]'
-                        : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]/50'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-[18px]">{app.icon}</span>
-                    {active && app.type !== 'static' && (
-                      <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-[var(--md-sys-color-tertiary)]" />
-                    )}
-                  </button>
-                );
-              })}
+              {apps.map((app) => (
+                <button
+                  key={app.id}
+                  onClick={() => selectApp(app)}
+                  title={app.name}
+                  className={`w-10 h-10 flex-shrink-0 rounded-xl flex items-center justify-center transition-all ${
+                    activeTab === 'app' && activeApp?.id === app.id
+                      ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)]'
+                      : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]/50'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[18px]">{app.icon}</span>
+                </button>
+              ))}
             </div>
           </div>
 
+          {/* Footer controls */}
           <div className="p-3 border-t border-[var(--md-sys-color-surface-variant)] flex flex-col items-center gap-2">
-            <button
-              onClick={toggleTheme}
-              title={theme === 'dark' ? 'Modo Claro' : 'Modo Escuro'}
-              className="w-10 h-10 rounded-xl bg-[var(--md-sys-color-surface-variant)] flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)]"
-            >
-              <span className="material-symbols-outlined text-base">{theme === 'dark' ? 'light_mode' : 'dark_mode'}</span>
+            <button onClick={toggleTheme} className="w-10 h-10 rounded-xl bg-[var(--md-sys-color-surface-variant)] flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)]">
+              <span className="material-symbols-outlined text-base">
+                {theme === 'dark' ? 'light_mode' : 'dark_mode'}
+              </span>
             </button>
 
-            <button
-              onClick={handleLogout}
-              title="Sair"
-              className="w-10 h-10 rounded-xl bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)] flex items-center justify-center"
-            >
+            <button onClick={handleLogout} className="w-10 h-10 rounded-xl bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)] flex items-center justify-center">
               <span className="material-symbols-outlined text-base">logout</span>
             </button>
           </div>
         </aside>
 
-        {mobileMenuOpen && <div onClick={() => setMobileMenuOpen(false)} className="fixed inset-0 z-40 bg-black/30 md:hidden" />}
+        {/* Backdrop overlay for mobile menu */}
+        {mobileMenuOpen && (
+          <div onClick={() => setMobileMenuOpen(false)} className="fixed inset-0 z-40 bg-black/30 md:hidden" />
+        )}
 
-        {/* ─── MAIN WORKSPACE ───────────────────────────────────────────────── */}
+        {/* ─── MAIN WORKSPACE ─── */}
         <div className="flex-1 flex flex-col overflow-hidden pl-[env(safe-area-inset-left)] md:pl-0 pr-[env(safe-area-inset-right)]">
-          <main className={`flex-1 overflow-y-auto relative ${activeTab === 'app' ? 'p-0' : 'p-4 md:p-6'}`}>
-            {activeTab === 'home' && (
-              <HomeView
-                apps={apps}
-                selectApp={selectApp}
-                serverStatus={serverStatus}
-                addToast={addToast}
-                fetchStatus={fetchStatus}
-                isRunning={isRunning}
-                askConfirm={askConfirm}
-                isAdmin={isAdmin}
-              />
-            )}
+          {/* Content Pane */}
+          <main className={`flex-1 overflow-y-auto relative ${
+            activeTab === 'app' ? 'p-0' : 'p-4 md:p-6'
+          }`}>
+
+
+            {activeTab === 'home' && <HomeView apps={apps} selectApp={selectApp} serverStatus={serverStatus} addToast={addToast} fetchStatus={fetchStatus} askConfirm={askConfirm} isAdmin={isAdmin} />}
             {activeTab === 'docker' && <DockerView addToast={addToast} askConfirm={askConfirm} isAdmin={isAdmin} />}
-            {activeTab === 'vm' && (
-              <VmView
-                addToast={addToast}
-                askConfirm={askConfirm}
-                isAdmin={isAdmin}
-                openWindowsApp={() => selectApp(apps.find((a) => a.id === 'windows'))}
-              />
-            )}
+            {activeTab === 'vm' && <VmView serverStatus={serverStatus} addToast={addToast} askConfirm={askConfirm} isAdmin={isAdmin} openWindowsApp={() => selectApp(apps.find((a) => a.id === 'windows'))} />}
             {activeTab === 'ia' && <IaHubView addToast={addToast} askConfirm={askConfirm} isAdmin={isAdmin} />}
             {activeTab === 'backup' && <BackupView serverStatus={serverStatus} addToast={addToast} />}
-            {activeTab === 'users' && <UsersView addToast={addToast} askConfirm={askConfirm} isAdmin={isAdmin} />}
-            {activeTab === 'maintenance' && isAdmin && (
-              <MaintenanceView serverStatus={serverStatus} addToast={addToast} fetchStatus={fetchStatus} askConfirm={askConfirm} />
-            )}
-
+            {activeTab === 'users' && isAdmin && <UsersView addToast={addToast} askConfirm={askConfirm} />}
+            {activeTab === 'maintenance' && isAdmin && <MaintenanceView serverStatus={serverStatus} addToast={addToast} fetchStatus={fetchStatus} askConfirm={askConfirm} />}
+            
             {activeTab === 'app' && activeApp && (
               <div className="w-full h-full flex flex-col bg-[var(--md-sys-color-surface)] md:border md:border-[var(--md-sys-color-surface-variant)] md:rounded-2xl overflow-hidden">
                 {/* App Iframe Controls */}
                 <div className="h-10 px-4 bg-[var(--md-sys-color-surface-variant)] flex items-center justify-between border-b border-[var(--md-sys-color-surface-variant)] flex-shrink-0 text-xs">
-                  <div className="flex items-center gap-2 max-w-[65%] overflow-hidden">
-                    <button
-                      onClick={closeActiveApp}
-                      title="Voltar"
+                  <div className="flex items-center gap-2 max-w-[50%] sm:max-w-xs overflow-hidden">
+                    <button 
+                      onClick={closeActiveApp} 
+                      title="Voltar" 
                       className="h-7 px-2 rounded-lg hover:bg-black/5 flex items-center gap-1 text-[var(--md-sys-color-on-surface-variant)] font-semibold flex-shrink-0"
                     >
                       <span className="material-symbols-outlined text-[16px]">arrow_back</span>
                       <span className="hidden sm:inline">Voltar</span>
                     </button>
-                    <span className="material-symbols-outlined text-[16px] text-[var(--md-sys-color-primary)] flex-shrink-0">
-                      {activeApp.icon}
-                    </span>
-                    <span className="font-semibold text-[var(--md-sys-color-on-surface)] truncate">{activeApp.name}</span>
                   </div>
                   <div className="flex items-center gap-1">
                     {iframeUrl && (
-                      <a
-                        href={iframeUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title="Abrir em nova aba"
+                      <a 
+                        href={iframeUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        title="Abrir em nova aba" 
                         className="w-7 h-7 rounded-lg hover:bg-black/5 flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)]"
                       >
                         <span className="material-symbols-outlined text-[16px]">open_in_new</span>
                       </a>
                     )}
-                    <button
-                      onClick={reloadIframe}
-                      title="Recarregar"
-                      className="w-7 h-7 rounded-lg hover:bg-black/5 flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)]"
-                    >
+                    <button onClick={reloadIframe} title="Recarregar" className="w-7 h-7 rounded-lg hover:bg-black/5 flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)]">
                       <span className="material-symbols-outlined text-[16px]">refresh</span>
                     </button>
-                    {activeApp.type !== 'static' && (
-                      <button
-                        onClick={stopActiveAppContainer}
-                        title="Parar"
-                        className="w-7 h-7 rounded-lg hover:bg-black/5 flex items-center justify-center text-[var(--md-sys-color-error)]"
-                      >
+                    {(isAdmin || activeApp.type === 'sandbox') && activeApp.type !== 'static' && (
+                      <button onClick={stopActiveAppContainer} title="Parar" className="w-7 h-7 rounded-lg hover:bg-black/5 flex items-center justify-center text-[var(--md-sys-color-error)]">
                         <span className="material-symbols-outlined text-[16px]">stop_circle</span>
                       </button>
                     )}
                   </div>
                 </div>
                 <div className="flex-1 bg-[var(--md-sys-color-background)] relative">
-                  {iframeUrl && !launching ? (
+                  {iframeUrl ? (
                     <iframe
                       src={
                         typeof window !== 'undefined' &&
@@ -757,9 +717,8 @@ export default function DashboardPage() {
                       allow="autoplay; clipboard-read; clipboard-write; fullscreen; gamepad"
                     />
                   ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-xs text-[var(--md-sys-color-on-surface-variant)]">
-                      <span className="material-symbols-outlined animate-spin text-2xl text-[var(--md-sys-color-primary)]">autorenew</span>
-                      <span>{launchMessage || 'Iniciando aplicação...'}</span>
+                    <div className="w-full h-full flex items-center justify-center text-xs text-[var(--md-sys-color-on-surface-variant)]">
+                      Iniciando aplicação...
                     </div>
                   )}
                 </div>
@@ -770,12 +729,17 @@ export default function DashboardPage() {
       </div>
 
       {/* Bottom Navigation for Mobile */}
-      <nav
-        className={`md:hidden border-t border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex items-center justify-around flex-shrink-0 z-20 pb-[env(safe-area-inset-bottom)] pt-1.5 pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] ${
-          activeTab === 'app' || mobileMenuOpen ? 'hidden' : 'flex'
-        }`}
-      >
-        {navTabs.map((tab) => (
+      <nav className={`md:hidden border-t border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] flex items-center justify-around flex-shrink-0 z-20 pb-[env(safe-area-inset-bottom)] pt-2 pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] ${
+        activeTab === 'app' || mobileMenuOpen ? 'hidden' : 'flex'
+      }`}>
+        {[
+          { id: 'home', icon: 'home' },
+          { id: 'docker', icon: 'view_in_ar' },
+          { id: 'ia', icon: 'psychology' },
+          { id: 'backup', icon: 'cloud_sync' },
+          { id: 'users', icon: 'group' },
+          { id: 'maintenance', icon: 'build' }
+        ].filter((t) => (t.id !== 'users' && t.id !== 'maintenance') || isAdmin).map((tab) => (
           <button
             key={tab.id}
             onClick={() => {
@@ -784,21 +748,14 @@ export default function DashboardPage() {
               }
               setActiveTab(tab.id);
             }}
-            title={tab.name}
-            className="flex items-center justify-center flex-1 py-1.5 text-[var(--md-sys-color-on-surface-variant)] hover:text-[var(--md-sys-color-primary)] transition-all"
+            className="flex items-center justify-center flex-1 py-2 text-[var(--md-sys-color-on-surface-variant)] hover:text-[var(--md-sys-color-primary)] transition-all"
           >
-            <div
-              className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${
-                activeTab === tab.id ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)]' : ''
-              }`}
-            >
-              <span
-                className={`material-symbols-outlined text-lg ${
-                  activeTab === tab.id ? 'icon-filled text-[var(--md-sys-color-on-primary-container)]' : ''
-                }`}
-              >
-                {tab.icon}
-              </span>
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+              activeTab === tab.id 
+                ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)]' 
+                : ''
+            }`}>
+              <span className={`material-symbols-outlined text-xl ${activeTab === tab.id ? 'icon-filled text-[var(--md-sys-color-on-primary-container)]' : ''}`}>{tab.icon}</span>
             </div>
           </button>
         ))}
@@ -812,27 +769,26 @@ export default function DashboardPage() {
         onConfirm={confirmState.onConfirm}
         onCancel={closeConfirm}
       />
-
       <Toast toasts={toasts} removeToast={removeToast} />
     </div>
   );
 }
 
 // ─── HOME VIEW ──────────────────────────────────────────────────────────────
-function HomeView({ apps, selectApp, serverStatus, addToast, fetchStatus, isRunning, askConfirm, isAdmin }) {
+function HomeView({ apps, selectApp, serverStatus, addToast, fetchStatus, askConfirm, isAdmin }) {
   const [loading, setLoading] = useState(false);
 
   const triggerPower = (action) => {
-    const label = action === 'reboot' ? 'Reiniciar' : 'Desligar';
+    const label = action === 'reboot' ? 'reiniciar' : 'desligar';
     askConfirm({
-      title: `${label} servidor`,
-      message: `Deseja realmente ${label.toLowerCase()} o servidor remoto agora?`,
+      title: action === 'reboot' ? 'Reiniciar Servidor' : 'Desligar Servidor',
+      message: `Deseja realmente ${label} o servidor remoto?`,
       danger: true,
       onConfirm: async () => {
         setLoading(true);
         try {
           const data = await apiFetch(`/api/power/${action}`, { method: 'POST' });
-          if (data.ok) addToast('Comando de energia executado com sucesso.', 'success');
+          if (data.ok) addToast('Comando executado com sucesso.', 'success');
           else addToast(data.error || 'Erro ao executar comando.', 'error');
         } catch {
           addToast('Erro ao conectar.', 'error');
@@ -855,150 +811,51 @@ function HomeView({ apps, selectApp, serverStatus, addToast, fetchStatus, isRunn
     setTimeout(fetchStatus, 3000);
   };
 
-  const mem = serverStatus?.memory || { total: 0, used: 0, percent: 0 };
-  const tunnelCount = serverStatus?.activeTunnels ? Object.keys(serverStatus.activeTunnels).filter((k) => Number(k) < 10000).length : 0;
-
   return (
     <div className="space-y-5">
       {/* Top Quick Controls Bar */}
       <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <span className="material-symbols-outlined text-lg text-[var(--md-sys-color-primary)]">dns</span>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-[var(--md-sys-color-on-surface)]">
-                  {serverStatus?.online ? 'Servidor Online' : 'Servidor Offline'}
-                </span>
-                {serverStatus?.route && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)]">
-                    {serverStatus.route}
-                  </span>
-                )}
-              </div>
-              {serverStatus?.uptime && (
-                <p className="text-[10px] text-[var(--md-sys-color-on-surface-variant)] truncate">
-                  Ativo há {serverStatus.uptime} • {serverStatus.runningContainers?.length || 0} containers • {tunnelCount} túneis
-                </p>
-              )}
-            </div>
+            <span className="material-symbols-outlined text-lg text-[var(--md-sys-color-primary)]">
+              dns
+            </span>
+            <span className="text-xs font-medium text-[var(--md-sys-color-on-surface-variant)] truncate">
+              {serverStatus?.online ? 'Servidor Online' : 'Servidor Offline'}
+            </span>
           </div>
 
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={fetchStatus}
-              title="Atualizar status"
-              className="w-9 h-9 rounded-xl border border-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)] flex items-center justify-center"
-            >
-              <span className="material-symbols-outlined text-base">refresh</span>
-            </button>
-            {isAdmin && !serverStatus?.online && (
-              <button
-                onClick={triggerWol}
-                disabled={loading}
-                title="Ligar (WOL na rede local)"
-                className="w-9 h-9 rounded-xl bg-[var(--md-sys-color-primary)] text-white flex items-center justify-center transition-opacity hover:opacity-90"
-              >
-                <span className="material-symbols-outlined text-base">bolt</span>
+          {isAdmin && (
+            <div className="flex items-center gap-1.5">
+              {!serverStatus?.online && (
+                <button onClick={triggerWol} disabled={loading} title="Ligar (WOL)" className="w-9 h-9 rounded-xl bg-[var(--md-sys-color-primary)] text-white flex items-center justify-center transition-opacity hover:opacity-90">
+                  <span className="material-symbols-outlined text-base">bolt</span>
+                </button>
+              )}
+              <button onClick={() => triggerPower('reboot')} disabled={loading || !serverStatus?.online} title="Reiniciar" className="w-9 h-9 rounded-xl border border-[var(--md-sys-color-warning)]/20 text-[var(--md-sys-color-warning)] bg-transparent hover:bg-[var(--md-sys-color-warning-container)]/10 flex items-center justify-center disabled:opacity-50">
+                <span className="material-symbols-outlined text-base">restart_alt</span>
               </button>
-            )}
-            {isAdmin && (
-              <>
-                <button
-                  onClick={() => triggerPower('reboot')}
-                  disabled={loading || !serverStatus?.online}
-                  title="Reiniciar"
-                  className="w-9 h-9 rounded-xl border border-[var(--md-sys-color-warning)]/20 text-[var(--md-sys-color-warning)] bg-transparent hover:bg-[var(--md-sys-color-warning-container)]/10 flex items-center justify-center disabled:opacity-50"
-                >
-                  <span className="material-symbols-outlined text-base">restart_alt</span>
-                </button>
-                <button
-                  onClick={() => triggerPower('shutdown')}
-                  disabled={loading || !serverStatus?.online}
-                  title="Desligar"
-                  className="w-9 h-9 rounded-xl bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)] hover:bg-[var(--md-sys-color-error-container)]/80 flex items-center justify-center disabled:opacity-50"
-                >
-                  <span className="material-symbols-outlined text-base">power_off</span>
-                </button>
-              </>
-            )}
-          </div>
+              <button onClick={() => triggerPower('shutdown')} disabled={loading || !serverStatus?.online} title="Desligar" className="w-9 h-9 rounded-xl bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)] hover:bg-[var(--md-sys-color-error-container)]/80 flex items-center justify-center disabled:opacity-50">
+                <span className="material-symbols-outlined text-base">power_off</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
-
-      {/* Telemetry Summary Cards */}
-      {serverStatus?.online && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-          <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-3.5 rounded-2xl space-y-1.5">
-            <div className="flex items-center justify-between text-[var(--md-sys-color-on-surface-variant)]">
-              <span>CPU / Carga</span>
-              <span className="material-symbols-outlined text-base text-[var(--md-sys-color-primary)]">memory</span>
-            </div>
-            <div className="text-base font-bold">{serverStatus.cpu ?? 0}%</div>
-            <div className="w-full bg-[var(--md-sys-color-surface-variant)] h-1 rounded-full overflow-hidden">
-              <div className="bg-[var(--md-sys-color-primary)] h-full transition-all" style={{ width: `${Math.min(serverStatus.cpu ?? 0, 100)}%` }} />
-            </div>
-          </div>
-
-          <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-3.5 rounded-2xl space-y-1.5">
-            <div className="flex items-center justify-between text-[var(--md-sys-color-on-surface-variant)]">
-              <span>Memória RAM</span>
-              <span className="material-symbols-outlined text-base text-[var(--md-sys-color-primary)]">developer_board</span>
-            </div>
-            <div className="text-base font-bold">
-              {mem.percent}% <span className="text-[10px] font-normal text-[var(--md-sys-color-on-surface-variant)]">({mem.used} / {mem.total} GB)</span>
-            </div>
-            <div className="w-full bg-[var(--md-sys-color-surface-variant)] h-1 rounded-full overflow-hidden">
-              <div className="bg-[var(--md-sys-color-primary)] h-full transition-all" style={{ width: `${Math.min(mem.percent, 100)}%` }} />
-            </div>
-          </div>
-
-          <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-3.5 rounded-2xl space-y-1">
-            <div className="flex items-center justify-between text-[var(--md-sys-color-on-surface-variant)]">
-              <span>Containers Ativos</span>
-              <span className="material-symbols-outlined text-base text-[var(--md-sys-color-tertiary)]">view_in_ar</span>
-            </div>
-            <div className="text-base font-bold">{serverStatus.runningContainers?.length || 0}</div>
-            <div className="text-[10px] text-[var(--md-sys-color-on-surface-variant)]">{tunnelCount} túneis HTTPS ativos</div>
-          </div>
-
-          <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-3.5 rounded-2xl space-y-1">
-            <div className="flex items-center justify-between text-[var(--md-sys-color-on-surface-variant)]">
-              <span>Dispositivos Conectados</span>
-              <span className="material-symbols-outlined text-base text-[var(--md-sys-color-primary)]">devices</span>
-            </div>
-            <div className="text-base font-bold">{serverStatus.activeDevices ?? 1}</div>
-            <div className="text-[10px] text-[var(--md-sys-color-on-surface-variant)] truncate">{serverStatus.route || 'Conexão Segura'}</div>
-          </div>
-        </div>
-      )}
 
       {/* Quick Launch App Grid */}
       <div className="space-y-2">
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-          {apps.map((app) => {
-            const running = isRunning(app);
-            return (
-              <button
-                key={app.id}
-                onClick={() => selectApp(app)}
-                className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl flex flex-col items-center justify-center text-center transition-all hover:border-[var(--md-sys-color-primary)] relative group"
-              >
-                {app.type !== 'static' && (
-                  <span
-                    title={running ? 'Em execução' : 'Parado (inicia ao abrir)'}
-                    className={`absolute top-2.5 right-2.5 w-2 h-2 rounded-full ${
-                      running ? 'bg-[var(--md-sys-color-tertiary)]' : 'bg-[var(--md-sys-color-surface-variant)]'
-                    }`}
-                  />
-                )}
-                <span className="material-symbols-outlined text-xl mb-1.5 text-[var(--md-sys-color-on-surface-variant)] group-hover:text-[var(--md-sys-color-primary)]">
-                  {app.icon}
-                </span>
-                <span className="text-[11px] font-medium truncate w-full">{app.name}</span>
-              </button>
-            );
-          })}
+          {apps.map((app) => (
+            <button
+              key={app.id}
+              onClick={() => selectApp(app)}
+              className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl flex flex-col items-center justify-center text-center transition-all hover:border-[var(--md-sys-color-primary)] relative group"
+            >
+              <span className="material-symbols-outlined text-xl mb-1.5 text-[var(--md-sys-color-on-surface-variant)]">{app.icon}</span>
+              <span className="text-[11px] font-medium truncate w-full">{app.name}</span>
+            </button>
+          ))}
         </div>
       </div>
 
@@ -1012,15 +869,16 @@ function HomeView({ apps, selectApp, serverStatus, addToast, fetchStatus, isRunn
                   <span className="material-symbols-outlined text-sm text-[var(--md-sys-color-on-surface-variant)]">hard_drive</span>
                   {d.mount}
                 </span>
-                <span className="text-[var(--md-sys-color-on-surface-variant)] font-semibold">
-                  {d.used} / {d.total}
-                </span>
+                <span className="text-[var(--md-sys-color-on-surface-variant)] font-semibold">{d.used} / {d.total}</span>
               </div>
               <div className="w-full bg-[var(--md-sys-color-surface-variant)] h-1 rounded-full overflow-hidden">
-                <div className="bg-[var(--md-sys-color-primary)] h-full transition-all" style={{ width: `${d.percent}%` }} />
+                <div 
+                  className="bg-[var(--md-sys-color-primary)] h-full transition-all" 
+                  style={{ width: `${d.percent}%` }}
+                />
               </div>
               <div className="flex justify-between text-[9px] text-[var(--md-sys-color-on-surface-variant)]">
-                <span>{d.label || d.mount}</span>
+                <span>{d.filesystem}</span>
                 <span>{d.percent}%</span>
               </div>
             </div>
@@ -1037,10 +895,9 @@ function DockerView({ addToast, askConfirm, isAdmin }) {
   const [images, setImages] = useState([]);
   const [logs, setLogs] = useState('');
   const [logsContainer, setLogsContainer] = useState('');
-  const [tab, setTab] = useState('containers');
+  const [tab, setTab] = useState('containers'); // containers, images, logs
   const [loading, setLoading] = useState(false);
   const [filterAll, setFilterAll] = useState(false);
-  const [search, setSearch] = useState('');
 
   const fetchContainers = useCallback(async () => {
     setLoading(true);
@@ -1050,7 +907,7 @@ function DockerView({ addToast, askConfirm, isAdmin }) {
       if (data.ok) {
         setContainers(data.containers || []);
       } else {
-        addToast(data.error || 'Erro ao carregar contêineres.', 'error');
+        addToast('Erro ao carregar contêineres.', 'error');
       }
     } catch {
       addToast('Erro de conexão.', 'error');
@@ -1065,7 +922,7 @@ function DockerView({ addToast, askConfirm, isAdmin }) {
       if (data.ok) {
         setImages(data.images || []);
       } else {
-        addToast(data.error || 'Erro ao carregar imagens.', 'error');
+        addToast('Erro ao carregar imagens.', 'error');
       }
     } catch {
       addToast('Erro de conexão.', 'error');
@@ -1078,15 +935,15 @@ function DockerView({ addToast, askConfirm, isAdmin }) {
     else if (tab === 'images') fetchImages();
   }, [tab, fetchContainers, fetchImages]);
 
-  const execDockerAction = async (action, name) => {
+  const execContainerAction = async (action, name) => {
     setLoading(true);
     try {
       const data = await apiFetch(`/api/docker/${action}`, {
         method: 'POST',
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name })
       });
       if (data.ok) {
-        addToast(data.message || 'Comando executado.', 'success');
+        addToast('Comando executado.', 'success');
         fetchContainers();
       } else {
         addToast(data.error || 'Falha ao executar comando.', 'error');
@@ -1100,14 +957,14 @@ function DockerView({ addToast, askConfirm, isAdmin }) {
   const triggerAction = (action, name) => {
     if (action === 'rm') {
       askConfirm({
-        title: 'Remover contêiner',
+        title: 'Remover Contêiner',
         message: `Deseja realmente remover o contêiner ${name}?`,
         danger: true,
-        onConfirm: () => execDockerAction('rm', name),
+        onConfirm: () => execContainerAction(action, name),
       });
       return;
     }
-    execDockerAction(action, name);
+    execContainerAction(action, name);
   };
 
   const showLogs = async (name) => {
@@ -1116,7 +973,7 @@ function DockerView({ addToast, askConfirm, isAdmin }) {
     setLogs('');
     setLoading(true);
     try {
-      const data = await apiFetch(`/api/docker/logs?name=${encodeURIComponent(name)}`);
+      const data = await apiFetch(`/api/docker/logs?name=${name}`);
       if (data.ok) {
         setLogs(data.output || 'Sem logs.');
       } else {
@@ -1130,8 +987,8 @@ function DockerView({ addToast, askConfirm, isAdmin }) {
 
   const restartDockerService = () => {
     askConfirm({
-      title: 'Reiniciar Docker Daemon',
-      message: 'Deseja reiniciar o serviço Docker no servidor remoto? Todos os contêineres serão reiniciados.',
+      title: 'Reiniciar Docker',
+      message: 'Deseja reiniciar o serviço Docker no servidor remoto?',
       danger: true,
       onConfirm: async () => {
         setLoading(true);
@@ -1147,36 +1004,27 @@ function DockerView({ addToast, askConfirm, isAdmin }) {
     });
   };
 
-  const q = search.trim().toLowerCase();
-  const filteredContainers = useMemo(
-    () => (q ? containers.filter((c) => `${c.Names || ''} ${c.Image || ''} ${c.Status || ''}`.toLowerCase().includes(q)) : containers),
-    [containers, q]
-  );
-  const filteredImages = useMemo(
-    () => (q ? images.filter((i) => `${i.Repository || ''} ${i.Tag || ''}`.toLowerCase().includes(q)) : images),
-    [images, q]
-  );
-
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] p-2.5 rounded-2xl text-xs">
+      {/* Sub tabs and controls */}
+      <div className="flex items-center justify-between gap-3 bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] p-2.5 rounded-2xl text-xs">
         <div className="flex gap-1.5">
-          <button
-            onClick={() => setTab('containers')}
+          <button 
+            onClick={() => setTab('containers')} 
             className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${
-              tab === 'containers'
-                ? 'bg-[var(--md-sys-color-primary)] text-white'
+              tab === 'containers' 
+                ? 'bg-[var(--md-sys-color-primary)] text-white' 
                 : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
             }`}
           >
             <span className="material-symbols-outlined text-[16px]">view_in_ar</span>
-            <span className="hidden sm:inline">Contêineres ({containers.length})</span>
+            <span className="hidden sm:inline">Contêineres</span>
           </button>
-          <button
-            onClick={() => setTab('images')}
+          <button 
+            onClick={() => setTab('images')} 
             className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${
-              tab === 'images'
-                ? 'bg-[var(--md-sys-color-primary)] text-white'
+              tab === 'images' 
+                ? 'bg-[var(--md-sys-color-primary)] text-white' 
                 : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
             }`}
           >
@@ -1184,11 +1032,11 @@ function DockerView({ addToast, askConfirm, isAdmin }) {
             <span className="hidden sm:inline">Imagens</span>
           </button>
           {logsContainer && (
-            <button
-              onClick={() => setTab('logs')}
+            <button 
+              onClick={() => setTab('logs')} 
               className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${
-                tab === 'logs'
-                  ? 'bg-[var(--md-sys-color-primary)] text-white'
+                tab === 'logs' 
+                  ? 'bg-[var(--md-sys-color-primary)] text-white' 
                   : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
               }`}
             >
@@ -1198,48 +1046,27 @@ function DockerView({ addToast, askConfirm, isAdmin }) {
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {tab !== 'logs' && (
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Filtrar..."
-              className="bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-2.5 py-1 text-[11px] outline-none w-32 sm:w-44"
-            />
-          )}
+        <div className="flex items-center gap-3">
           {tab === 'containers' && (
             <label className="flex items-center gap-1.5 cursor-pointer text-[var(--md-sys-color-on-surface-variant)] select-none text-[11px]">
-              <input
-                type="checkbox"
-                checked={filterAll}
-                onChange={(e) => setFilterAll(e.target.checked)}
+              <input 
+                type="checkbox" 
+                checked={filterAll} 
+                onChange={(e) => setFilterAll(e.target.checked)} 
                 className="w-3.5 h-3.5 rounded accent-[var(--md-sys-color-primary)]"
               />
               <span>Todos (-a)</span>
             </label>
           )}
-          <button
-            onClick={tab === 'images' ? fetchImages : fetchContainers}
-            disabled={loading}
-            title="Atualizar"
-            className="w-8 h-8 rounded-lg border border-[var(--md-sys-color-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)] flex items-center justify-center"
-          >
-            <span className={`material-symbols-outlined text-base ${loading ? 'animate-spin' : ''}`}>refresh</span>
-          </button>
           {isAdmin && (
-            <button
-              onClick={restartDockerService}
-              disabled={loading}
-              title="Reiniciar Serviço Docker"
-              className="w-8 h-8 rounded-lg border border-[var(--md-sys-color-error)]/20 hover:bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-error)] flex items-center justify-center"
-            >
+            <button onClick={restartDockerService} disabled={loading} title="Reiniciar Serviço Docker" className="w-8 h-8 rounded-lg border border-[var(--md-sys-color-error)]/20 hover:bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-error)] flex items-center justify-center">
               <span className="material-symbols-outlined text-base">restart_alt</span>
             </button>
           )}
         </div>
       </div>
 
+      {/* Main Content Area */}
       <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] rounded-2xl overflow-hidden min-h-[250px] flex flex-col">
         {loading && (
           <div className="p-8 text-center text-xs text-[var(--md-sys-color-on-surface-variant)] flex items-center justify-center gap-2 flex-1">
@@ -1249,87 +1076,47 @@ function DockerView({ addToast, askConfirm, isAdmin }) {
         )}
 
         {!loading && tab === 'containers' && (
-          filteredContainers.length > 0 ? (
+          containers.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-[var(--md-sys-color-surface-variant)]/50 border-b border-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)]">
                     <th className="text-left py-2.5 px-4 font-semibold">Nome</th>
-                    <th className="text-left py-2.5 px-4 font-semibold">Estado</th>
-                    <th className="text-left py-2.5 px-4 font-semibold hidden md:table-cell">Imagem</th>
+                    <th className="text-left py-2.5 px-4 font-semibold">Status</th>
                     <th className="text-left py-2.5 px-4 font-semibold hidden lg:table-cell">Portas</th>
                     <th className="text-right py-2.5 px-4 font-semibold">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--md-sys-color-surface-variant)]">
-                  {filteredContainers.map((c, idx) => {
-                    const statusStr = c.Status || '';
-                    const active = statusStr.includes('Up');
-                    const paused = statusStr.includes('Paused');
-                    const unhealthy = statusStr.includes('unhealthy');
+                  {containers.map((c, idx) => {
+                    const active = c.Status?.includes('Up');
                     return (
                       <tr key={idx} className="hover:bg-[var(--md-sys-color-surface-variant)]/30 transition-colors">
-                        <td className="py-2.5 px-4 font-mono truncate max-w-[160px]">{c.Names}</td>
+                        <td className="py-2.5 px-4 font-mono truncate max-w-[150px]">{c.Names}</td>
                         <td className="py-2.5 px-4">
-                          <span
-                            title={statusStr}
-                            className={`font-medium ${
-                              unhealthy
-                                ? 'text-[var(--md-sys-color-warning)]'
-                                : paused
-                                ? 'text-[var(--md-sys-color-warning)]'
-                                : active
-                                ? 'text-[var(--md-sys-color-tertiary)]'
-                                : 'text-[var(--md-sys-color-error)]'
-                            }`}
-                          >
-                            {unhealthy ? 'Alerta' : paused ? 'Pausado' : active ? 'Ativo' : 'Parado'}
+                          <span className={active ? 'text-[var(--md-sys-color-tertiary)] font-medium' : 'text-[var(--md-sys-color-error)] font-medium'}>
+                            {active ? 'Ativo' : 'Parado'}
                           </span>
                         </td>
-                        <td className="py-2.5 px-4 hidden md:table-cell font-mono text-[10px] text-[var(--md-sys-color-on-surface-variant)] max-w-[180px] truncate">
-                          {c.Image || '—'}
-                        </td>
-                        <td className="py-2.5 px-4 hidden lg:table-cell font-mono text-[10px] text-[var(--md-sys-color-on-surface-variant)] max-w-[200px] truncate">
-                          {c.Ports || '—'}
-                        </td>
+                        <td className="py-2.5 px-4 hidden lg:table-cell font-mono text-[10px] text-[var(--md-sys-color-on-surface-variant)] max-w-[200px] truncate">{c.Ports || '—'}</td>
                         <td className="py-2.5 px-4 text-right space-x-0.5 whitespace-nowrap">
-                          {!active || paused ? (
-                            <button
-                              onClick={() => triggerAction('start', c.Names)}
-                              title="Iniciar"
-                              className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-primary)]"
-                            >
+                          {!active ? (
+                            <button onClick={() => triggerAction('start', c.Names)} title="Iniciar" className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-primary)]">
                               <span className="material-symbols-outlined text-[16px]">play_arrow</span>
                             </button>
                           ) : (
-                            <button
-                              onClick={() => triggerAction('stop', c.Names)}
-                              title="Parar"
-                              className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-error)]"
-                            >
+                            <button onClick={() => triggerAction('stop', c.Names)} title="Parar" className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-error)]">
                               <span className="material-symbols-outlined text-[16px]">stop</span>
                             </button>
                           )}
-                          <button
-                            onClick={() => triggerAction('restart', c.Names)}
-                            title="Reiniciar"
-                            className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-warning)]"
-                          >
+                          <button onClick={() => triggerAction('restart', c.Names)} title="Reiniciar" className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-warning)]">
                             <span className="material-symbols-outlined text-[16px]">autorenew</span>
                           </button>
-                          <button
-                            onClick={() => showLogs(c.Names)}
-                            title="Logs"
-                            className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)]"
-                          >
+                          <button onClick={() => showLogs(c.Names)} title="Logs" className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)]">
                             <span className="material-symbols-outlined text-[16px]">notes</span>
                           </button>
                           {isAdmin && (
-                            <button
-                              onClick={() => triggerAction('rm', c.Names)}
-                              title="Remover"
-                              className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-error)]"
-                            >
+                            <button onClick={() => triggerAction('rm', c.Names)} title="Remover" className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-error)]">
                               <span className="material-symbols-outlined text-[16px]">delete</span>
                             </button>
                           )}
@@ -1341,14 +1128,12 @@ function DockerView({ addToast, askConfirm, isAdmin }) {
               </table>
             </div>
           ) : (
-            <div className="p-8 text-center text-xs text-[var(--md-sys-color-on-surface-variant)] flex-1 flex items-center justify-center">
-              Nenhum contêiner encontrado.
-            </div>
+            <div className="p-8 text-center text-xs text-[var(--md-sys-color-on-surface-variant)] flex-1 flex items-center justify-center">Nenhum contêiner.</div>
           )
         )}
 
         {!loading && tab === 'images' && (
-          filteredImages.length > 0 ? (
+          images.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
@@ -1360,7 +1145,7 @@ function DockerView({ addToast, askConfirm, isAdmin }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--md-sys-color-surface-variant)]">
-                  {filteredImages.map((img, idx) => (
+                  {images.map((img, idx) => (
                     <tr key={idx} className="hover:bg-[var(--md-sys-color-surface-variant)]/30 transition-colors">
                       <td className="py-2 px-4 font-mono">{img.Repository}</td>
                       <td className="py-2 px-4 font-mono text-[var(--md-sys-color-on-surface-variant)]">{img.Tag}</td>
@@ -1372,14 +1157,12 @@ function DockerView({ addToast, askConfirm, isAdmin }) {
               </table>
             </div>
           ) : (
-            <div className="p-8 text-center text-xs text-[var(--md-sys-color-on-surface-variant)] flex-1 flex items-center justify-center">
-              Nenhuma imagem encontrada.
-            </div>
+            <div className="p-8 text-center text-xs text-[var(--md-sys-color-on-surface-variant)] flex-1 flex items-center justify-center">Nenhuma imagem.</div>
           )
         )}
 
         {!loading && tab === 'logs' && (
-          <div className="flex-1 flex flex-col p-3 bg-black text-green-400 font-mono text-xs overflow-hidden h-[380px]">
+          <div className="flex-1 flex flex-col p-3 bg-black text-green-400 font-mono text-xs overflow-hidden h-[350px]">
             <div className="flex items-center justify-between border-b border-gray-800 pb-1.5 mb-2 text-[10px]">
               <span className="truncate">Logs: {logsContainer}</span>
               <button onClick={() => showLogs(logsContainer)} className="hover:text-white flex items-center gap-1">
@@ -1397,22 +1180,25 @@ function DockerView({ addToast, askConfirm, isAdmin }) {
 
 // ─── IA HUB VIEW ────────────────────────────────────────────────────────────
 function IaHubView({ addToast, askConfirm, isAdmin }) {
-  const [subTab, setSubTab] = useState('chat');
+  const [subTab, setSubTab] = useState('chat'); // chat, agent, manage
   const [models, setModels] = useState([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [chatModel, setChatModel] = useState('');
-
+  
+  // Chat States
   const [messages, setMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const chatEndRef = useRef(null);
 
+  // Agent States
   const [agentPrompt, setAgentPrompt] = useState('');
-  const [agentEngine, setAgentEngine] = useState('antigravity');
-  const [agentMode, setAgentMode] = useState('autonomous');
+  const [agentEngine, setAgentEngine] = useState('antigravity'); // antigravity, crewai, gemma4, interpreter
+  const [agentMode, setAgentMode] = useState('autonomous'); // safe, autonomous
   const [agentOutput, setAgentOutput] = useState('');
   const [agentLoading, setAgentLoading] = useState(false);
 
+  // Manage States
   const [ollamaStatus, setOllamaStatus] = useState('');
   const [statusLoading, setStatusLoading] = useState(false);
   const [pullModelName, setPullModelName] = useState('');
@@ -1423,7 +1209,7 @@ function IaHubView({ addToast, askConfirm, isAdmin }) {
     try {
       const data = await apiFetch('/api/ia/models');
       if (data.ok) {
-        const lines = (data.output || '').split('\n').map((l) => l.trim()).filter(Boolean);
+        const lines = (data.output || '').split('\n').map(l => l.trim()).filter(Boolean);
         const parsed = [];
         for (let i = 1; i < lines.length; i++) {
           const parts = lines[i].split(/\s{2,}/);
@@ -1435,7 +1221,9 @@ function IaHubView({ addToast, askConfirm, isAdmin }) {
           parsed.push(...data.gatewayModels);
         }
         setModels(parsed);
-        setChatModel((prev) => prev || (parsed.length > 0 ? parsed[0].name : ''));
+        if (parsed.length > 0 && !chatModel) {
+          setChatModel(parsed[0].name);
+        }
       } else {
         addToast(data.error || 'Erro ao carregar modelos da IA.', 'error');
       }
@@ -1443,7 +1231,7 @@ function IaHubView({ addToast, askConfirm, isAdmin }) {
       addToast('Erro de rede ao carregar modelos da IA.', 'error');
     }
     setModelsLoading(false);
-  }, [addToast]);
+  }, [chatModel, addToast]);
 
   const fetchStatus = useCallback(async () => {
     setStatusLoading(true);
@@ -1475,7 +1263,7 @@ function IaHubView({ addToast, askConfirm, isAdmin }) {
     if (!chatInput.trim() || !chatModel || chatLoading) return;
 
     const userMsg = { role: 'user', content: chatInput };
-    setMessages((prev) => [...prev, userMsg]);
+    setMessages(prev => [...prev, userMsg]);
     setChatInput('');
     setChatLoading(true);
 
@@ -1483,18 +1271,16 @@ function IaHubView({ addToast, askConfirm, isAdmin }) {
       const requestMsgs = [...messages, userMsg];
       const data = await apiFetch('/api/ia/chat', {
         method: 'POST',
-        body: JSON.stringify({ model: chatModel, messages: requestMsgs }),
+        body: JSON.stringify({ model: chatModel, messages: requestMsgs })
       });
 
       if (data.ok && data.message) {
-        setMessages((prev) => [...prev, data.message]);
+        setMessages(prev => [...prev, data.message]);
       } else {
-        const errTxt = data.error || 'Erro ao obter resposta da IA.';
-        addToast(errTxt, 'error');
-        setMessages((prev) => [...prev, { role: 'assistant', content: `Erro: ${errTxt}` }]);
+        addToast(data.error || 'Erro na IA.', 'error');
       }
-    } catch (err) {
-      addToast(err?.message || 'Erro ao se conectar.', 'error');
+    } catch {
+      addToast('Erro ao se conectar.', 'error');
     }
     setChatLoading(false);
   };
@@ -1508,14 +1294,14 @@ function IaHubView({ addToast, askConfirm, isAdmin }) {
     try {
       const data = await apiFetch('/api/ia/agent', {
         method: 'POST',
-        body: JSON.stringify({ prompt: agentPrompt, mode: agentMode, engine: agentEngine }),
+        body: JSON.stringify({ prompt: agentPrompt, mode: agentMode, engine: agentEngine })
       });
       if (data.ok) {
         setAgentOutput(data.output || 'Concluído.');
         addToast('Agente concluído.', 'success');
       } else {
         setAgentOutput(`Erro: ${data.error}`);
-        addToast(data.error || 'Falha no agente.', 'error');
+        addToast('Falha no agente.', 'error');
       }
     } catch {
       addToast('Erro de rede.', 'error');
@@ -1531,14 +1317,14 @@ function IaHubView({ addToast, askConfirm, isAdmin }) {
     try {
       const data = await apiFetch('/api/ia/pull', {
         method: 'POST',
-        body: JSON.stringify({ model: pullModelName }),
+        body: JSON.stringify({ model: pullModelName })
       });
       if (data.ok) {
         addToast(`Modelo ${pullModelName} baixado!`, 'success');
         setPullModelName('');
         fetchModels();
       } else {
-        addToast(data.error || 'Erro no download.', 'error');
+        addToast('Erro no download.', 'error');
       }
     } catch {
       addToast('Erro de conexão.', 'error');
@@ -1547,19 +1333,23 @@ function IaHubView({ addToast, askConfirm, isAdmin }) {
   };
 
   const removeModel = (name) => {
-    if (name.includes('/') || name === 'antigravity') {
-      addToast('Modelos integrados de nuvem/CLI não podem ser removidos aqui.', 'info');
+    if (name.includes('/')) {
+      addToast('Modelos de nuvem (Vercel AI Gateway) são integrados e não podem ser removidos.', 'info');
+      return;
+    }
+    if (!isAdmin) {
+      addToast('Apenas administradores podem remover modelos.', 'error');
       return;
     }
     askConfirm({
-      title: 'Remover modelo Ollama',
-      message: `Deseja realmente remover o modelo ${name} do servidor?`,
+      title: 'Remover Modelo',
+      message: `Deseja realmente remover o modelo ${name}?`,
       danger: true,
       onConfirm: async () => {
         try {
           const data = await apiFetch('/api/ia/remove', {
             method: 'POST',
-            body: JSON.stringify({ model: name }),
+            body: JSON.stringify({ model: name })
           });
           if (data.ok) {
             addToast(`Modelo ${name} removido!`, 'success');
@@ -1576,74 +1366,48 @@ function IaHubView({ addToast, askConfirm, isAdmin }) {
 
   return (
     <div className="space-y-4">
+      {/* Sub tabs */}
       <div className="flex bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] p-2 rounded-2xl text-xs gap-1.5">
-        <button
-          onClick={() => setSubTab('chat')}
-          className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${
-            subTab === 'chat' ? 'bg-[var(--md-sys-color-primary)] text-white' : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
-          }`}
-        >
+        <button onClick={() => setSubTab('chat')} className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${subTab === 'chat' ? 'bg-[var(--md-sys-color-primary)] text-white' : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'}`}>
           <span className="material-symbols-outlined text-[16px]">forum</span>
           <span>Conversar</span>
         </button>
-        {isAdmin && (
-          <button
-            onClick={() => setSubTab('agent')}
-            className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${
-              subTab === 'agent' ? 'bg-[var(--md-sys-color-primary)] text-white' : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
-            }`}
-          >
-            <span className="material-symbols-outlined text-[16px]">smart_toy</span>
-            <span>Agente</span>
-          </button>
-        )}
-        <button
-          onClick={() => setSubTab('manage')}
-          className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${
-            subTab === 'manage' ? 'bg-[var(--md-sys-color-primary)] text-white' : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
-          }`}
-        >
+        <button onClick={() => setSubTab('agent')} className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${subTab === 'agent' ? 'bg-[var(--md-sys-color-primary)] text-white' : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'}`}>
+          <span className="material-symbols-outlined text-[16px]">smart_toy</span>
+          <span>Agente</span>
+        </button>
+        <button onClick={() => setSubTab('manage')} className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${subTab === 'manage' ? 'bg-[var(--md-sys-color-primary)] text-white' : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'}`}>
           <span className="material-symbols-outlined text-[16px]">settings</span>
           <span>Gerenciar</span>
         </button>
       </div>
 
       <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] rounded-2xl p-4 min-h-[300px] flex flex-col justify-between text-xs">
+        {/* CHAT HUB */}
         {subTab === 'chat' && (
-          <div className="flex-1 flex flex-col h-[420px]">
-            <div className="flex items-center justify-between gap-2 pb-3 border-b border-[var(--md-sys-color-surface-variant)] mb-3 text-xs">
+          <div className="flex-1 flex flex-col h-[400px]">
+            {/* Top Selector */}
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--md-sys-color-surface-variant)] mb-3 text-xs">
               <span className="font-semibold text-[var(--md-sys-color-on-surface-variant)] flex items-center gap-1">
                 <span className="material-symbols-outlined text-sm">psychology</span>
                 Modelo
               </span>
-              <div className="flex items-center gap-2">
-                <select
-                  value={chatModel}
-                  onChange={(e) => setChatModel(e.target.value)}
-                  className="bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-2.5 py-1 outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] font-medium text-[11px]"
-                >
-                  {models.length > 0 ? (
-                    models.map((m, idx) => (
-                      <option key={idx} value={m.name}>
-                        {m.name} ({m.size})
-                      </option>
-                    ))
-                  ) : (
-                    <option value="">Sem modelos</option>
-                  )}
-                </select>
-                {messages.length > 0 && (
-                  <button
-                    onClick={() => setMessages([])}
-                    title="Limpar conversa"
-                    className="px-2 py-1 rounded-lg border border-[var(--md-sys-color-surface-variant)] text-[10px] hover:bg-[var(--md-sys-color-surface-variant)]"
-                  >
-                    Limpar
-                  </button>
+              <select 
+                value={chatModel} 
+                onChange={(e) => setChatModel(e.target.value)}
+                className="bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-2.5 py-1 outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] font-medium text-[11px]"
+              >
+                {models.length > 0 ? (
+                  models.map((m, idx) => (
+                    <option key={idx} value={m.name}>{m.name}</option>
+                  ))
+                ) : (
+                  <option value="">Sem modelos</option>
                 )}
-              </div>
+              </select>
             </div>
 
+            {/* Chat Messages */}
             <div className="flex-1 overflow-y-auto space-y-3 pb-3 pr-1 text-xs">
               {messages.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)] opacity-60">
@@ -1652,13 +1416,11 @@ function IaHubView({ addToast, askConfirm, isAdmin }) {
               ) : (
                 messages.map((m, idx) => (
                   <div key={idx} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div
-                      className={`max-w-[85%] p-3 rounded-2xl border ${
-                        m.role === 'user'
-                          ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] border-[var(--md-sys-color-primary)]/10 rounded-br-none'
-                          : 'bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] border-transparent rounded-bl-none'
-                      }`}
-                    >
+                    <div className={`max-w-[85%] p-3 rounded-2xl border ${
+                      m.role === 'user' 
+                        ? 'bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] border-[var(--md-sys-color-primary)]/10 rounded-br-none' 
+                        : 'bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] border-transparent rounded-bl-none'
+                    }`}>
                       <div className="whitespace-pre-wrap">{m.content}</div>
                     </div>
                   </div>
@@ -1674,6 +1436,7 @@ function IaHubView({ addToast, askConfirm, isAdmin }) {
               <div ref={chatEndRef} />
             </div>
 
+            {/* Input Form */}
             <form onSubmit={sendChatMessage} className="flex gap-2 pt-3 border-t border-[var(--md-sys-color-surface-variant)]">
               <input
                 type="text"
@@ -1683,8 +1446,8 @@ function IaHubView({ addToast, askConfirm, isAdmin }) {
                 disabled={chatLoading || !chatModel}
                 className="flex-1 bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3.5 py-2 text-xs outline-none border border-transparent focus:border-[var(--md-sys-color-primary)]"
               />
-              <button
-                type="submit"
+              <button 
+                type="submit" 
                 disabled={chatLoading || !chatInput.trim() || !chatModel}
                 className="btn-primary w-9 h-9 rounded-xl flex items-center justify-center disabled:opacity-50 flex-shrink-0"
               >
@@ -1694,8 +1457,9 @@ function IaHubView({ addToast, askConfirm, isAdmin }) {
           </div>
         )}
 
+        {/* AGENT HUB */}
         {subTab === 'agent' && (
-          <div className="flex-1 flex flex-col h-[420px]">
+          <div className="flex-1 flex flex-col h-[400px]">
             <form onSubmit={triggerAgent} className="flex flex-col sm:flex-row gap-2">
               <input
                 type="text"
@@ -1716,8 +1480,8 @@ function IaHubView({ addToast, askConfirm, isAdmin }) {
                   <option value="crewai">CrewAI (Software House)</option>
                   <option value="interpreter">Open Interpreter</option>
                 </select>
-                <select
-                  value={agentMode}
+                <select 
+                  value={agentMode} 
                   onChange={(e) => setAgentMode(e.target.value)}
                   className="bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-2 py-2 outline-none text-[11px] font-medium"
                 >
@@ -1737,9 +1501,11 @@ function IaHubView({ addToast, askConfirm, isAdmin }) {
           </div>
         )}
 
+        {/* MANAGE HUB */}
         {subTab === 'manage' && (
           <div className="flex-1 space-y-4">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Models List */}
               <div className="space-y-2">
                 <div className="border border-[var(--md-sys-color-surface-variant)] rounded-2xl overflow-hidden bg-[var(--md-sys-color-surface-variant)]/10">
                   {modelsLoading ? (
@@ -1759,19 +1525,15 @@ function IaHubView({ addToast, askConfirm, isAdmin }) {
                             <td className="py-2 px-3 font-mono font-medium">{m.name}</td>
                             <td className="py-2 px-3 font-mono text-[var(--md-sys-color-on-surface-variant)]">{m.size}</td>
                             <td className="py-2 px-3 text-right">
-                              {m.name.includes('/') || m.name === 'antigravity' ? (
+                              {m.name.includes('/') ? (
                                 <span className="inline-block px-2 py-0.5 text-[10px] rounded-full bg-[var(--md-sys-color-primary)]/10 text-[var(--md-sys-color-primary)] font-semibold">
-                                  {m.name === 'antigravity' ? 'CLI' : 'Cloud'}
+                                  Vercel AI
                                 </span>
-                              ) : isAdmin ? (
-                                <button
-                                  onClick={() => removeModel(m.name)}
-                                  title="Remover"
-                                  className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-error)]"
-                                >
+                              ) : (
+                                <button onClick={() => removeModel(m.name)} title="Remover" className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-error)]">
                                   <span className="material-symbols-outlined text-[16px]">delete</span>
                                 </button>
-                              ) : null}
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -1783,25 +1545,26 @@ function IaHubView({ addToast, askConfirm, isAdmin }) {
                 </div>
               </div>
 
+              {/* Download & Status */}
               <div className="space-y-4">
-                {isAdmin && (
-                  <form onSubmit={startPull} className="flex gap-2">
-                    <input
-                      type="text"
-                      value={pullModelName}
-                      onChange={(e) => setPullModelName(e.target.value)}
-                      placeholder="deepseek-r1:8b"
-                      disabled={pullLoading}
-                      className="flex-1 bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3 py-2 outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] text-xs"
-                    />
-                    <button type="submit" disabled={pullLoading || !pullModelName.trim()} className="btn-primary px-4 py-2 rounded-xl font-bold flex items-center gap-1.5 flex-shrink-0">
-                      <span className="material-symbols-outlined text-sm">download</span>
-                      <span>{pullLoading ? 'Baixando...' : 'Baixar'}</span>
-                    </button>
-                  </form>
-                )}
+                {/* Download Form */}
+                <form onSubmit={startPull} className="flex gap-2">
+                  <input
+                    type="text"
+                    value={pullModelName}
+                    onChange={(e) => setPullModelName(e.target.value)}
+                    placeholder="deepseek-r1:8b"
+                    disabled={pullLoading}
+                    className="flex-1 bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3 py-2 outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] text-xs"
+                  />
+                  <button type="submit" disabled={pullLoading || !pullModelName.trim()} className="btn-primary px-4 py-2 rounded-xl font-bold flex items-center gap-1.5 flex-shrink-0">
+                    <span className="material-symbols-outlined text-sm">download</span>
+                    <span>Baixar</span>
+                  </button>
+                </form>
 
-                <pre className="p-3 bg-black text-green-400 font-mono text-[10px] rounded-xl whitespace-pre-wrap overflow-auto max-h-[220px]">
+                {/* Status Box */}
+                <pre className="p-3 bg-black text-green-400 font-mono text-[10px] rounded-xl whitespace-pre-wrap overflow-auto max-h-[150px]">
                   {statusLoading ? 'Status...' : ollamaStatus}
                 </pre>
               </div>
@@ -1818,34 +1581,29 @@ function BackupView({ serverStatus, addToast }) {
   const [output, setOutput] = useState('');
   const [loading, setLoading] = useState(false);
   const [photosLoading, setPhotosLoading] = useState(false);
-  const [externalMounted, setExternalMounted] = useState(null);
 
-  const fetchBackupStatus = useCallback(async () => {
-    try {
-      const data = await apiFetch('/api/backup/status');
-      if (data.ok) {
-        setOutput(data.log || '');
-        setLoading(Boolean(data.running));
+  // Poll status/logs every 3 seconds
+  useEffect(() => {
+    let active = true;
+    const fetchStatus = async () => {
+      try {
+        const data = await apiFetch('/api/backup/status');
+        if (active && data.ok) {
+          setOutput(data.log || '');
+          setLoading(data.running);
+        }
+      } catch (err) {
+        console.error('Failed to fetch backup status:', err);
       }
-    } catch {}
+    };
+
+    fetchStatus(); // Fetch immediately on mount
+    const interval = setInterval(fetchStatus, 3000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
   }, []);
-
-  const fetchStorageMount = useCallback(async () => {
-    try {
-      const data = await apiFetch('/api/backup/storage');
-      if (data.ok) setExternalMounted(Boolean(data.externalMounted));
-    } catch {}
-  }, []);
-
-  useEffect(() => {
-    fetchBackupStatus();
-    fetchStorageMount();
-  }, [fetchBackupStatus, fetchStorageMount]);
-
-  useEffect(() => {
-    const interval = setInterval(fetchBackupStatus, loading ? 3000 : 15000);
-    return () => clearInterval(interval);
-  }, [loading, fetchBackupStatus]);
 
   const runBackup = async () => {
     setOutput('Iniciando backup no servidor...');
@@ -1853,26 +1611,11 @@ function BackupView({ serverStatus, addToast }) {
       const data = await apiFetch('/api/backup/full', { method: 'POST' });
       if (data.ok) {
         addToast(data.message || 'Backup iniciado!', 'success');
-        fetchBackupStatus();
       } else {
         addToast(data.error || 'Falha ao iniciar o backup.', 'error');
-        setOutput(data.error || 'Falha ao iniciar o backup.');
       }
     } catch {
       addToast('Erro ao iniciar o backup.', 'error');
-    }
-  };
-
-  const stopBackup = async () => {
-    try {
-      const data = await apiFetch('/api/backup/full', {
-        method: 'POST',
-        body: JSON.stringify({ action: 'stop' }),
-      });
-      if (data.ok) addToast(data.message || 'Sinal de parada enviado.', 'info');
-      else addToast(data.error || 'Falha ao parar backup.', 'error');
-    } catch {
-      addToast('Erro ao enviar sinal de parada.', 'error');
     }
   };
 
@@ -1881,9 +1624,9 @@ function BackupView({ serverStatus, addToast }) {
     setOutput('');
     try {
       const data = await apiFetch('/api/backup/photos', { method: 'POST' });
-      setOutput(data.output || data.message || data.error || 'Concluído.');
+      setOutput(data.output || data.message || 'Concluído.');
       if (data.ok) {
-        addToast('Sincronização de fotos iniciada!', 'success');
+        addToast('Sincronização de fotos concluída!', 'success');
         if (data.url) {
           window.open(data.url, '_blank');
         }
@@ -1899,58 +1642,35 @@ function BackupView({ serverStatus, addToast }) {
 
   return (
     <div className="space-y-4 text-xs">
-      {externalMounted === false && (
-        <div className="border border-[var(--md-sys-color-warning)]/30 bg-[var(--md-sys-color-warning-container)] text-[var(--md-sys-color-on-warning-container)] p-3 rounded-2xl flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-base">usb_off</span>
-            <span>HD Externo (/mnt/hd_externo) desconectado. Conecte o disco para executar backups na nuvem.</span>
-          </div>
-          <button onClick={fetchStorageMount} className="px-2.5 py-1 rounded-lg bg-black/10 font-semibold">
-            Verificar
-          </button>
-        </div>
-      )}
-
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Backup Geral */}
         <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-[var(--md-sys-color-primary)]">cloud_sync</span>
-            <div>
-              <span className="font-semibold text-xs block">Backup Geral</span>
-              <span className="text-[10px] text-[var(--md-sys-color-on-surface-variant)]">
-                Destino: /mnt/hd_externo/Nuvem ({externalMounted ? 'Montado' : 'Desconectado'})
-              </span>
-            </div>
+            <span className="font-semibold text-xs">Backup Geral</span>
           </div>
-          <div className="flex items-center gap-2">
-            {loading && (
-              <button onClick={stopBackup} className="btn-danger py-2 px-3 rounded-xl font-bold flex items-center gap-1">
-                <span className="material-symbols-outlined text-base">stop</span>
-                <span>Parar</span>
-              </button>
+          <button onClick={runBackup} disabled={loading || photosLoading} className="btn-primary py-2 px-4 rounded-xl font-bold flex items-center gap-1">
+            {loading ? (
+              <span className="animate-spin material-symbols-outlined text-base">autorenew</span>
+            ) : (
+              <>
+                <span className="material-symbols-outlined text-base">play_arrow</span>
+                <span>Iniciar</span>
+              </>
             )}
-            <button onClick={runBackup} disabled={loading || photosLoading} className="btn-primary py-2 px-4 rounded-xl font-bold flex items-center gap-1 disabled:opacity-50">
-              {loading ? (
-                <span className="animate-spin material-symbols-outlined text-base">autorenew</span>
-              ) : (
-                <>
-                  <span className="material-symbols-outlined text-base">play_arrow</span>
-                  <span>Iniciar</span>
-                </>
-              )}
-            </button>
-          </div>
+          </button>
         </div>
 
+        {/* Google Fotos */}
         <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-[var(--md-sys-color-primary)]">photo_library</span>
             <div className="flex flex-col">
               <span className="font-semibold text-xs">Sincronização Google Fotos</span>
-              <span className="text-[10px] text-[var(--md-sys-color-on-surface-variant)]">Requer autenticação via Webtop</span>
+              <span className="text-[9px] text-gray-500">Requer autenticação via Webtop</span>
             </div>
           </div>
-          <button onClick={runPhotosBackup} disabled={loading || photosLoading} className="btn-primary py-2 px-4 rounded-xl font-bold flex items-center gap-1 disabled:opacity-50">
+          <button onClick={runPhotosBackup} disabled={loading || photosLoading} className="btn-primary py-2 px-4 rounded-xl font-bold flex items-center gap-1">
             {photosLoading ? (
               <span className="animate-spin material-symbols-outlined text-base">autorenew</span>
             ) : (
@@ -1964,24 +1684,27 @@ function BackupView({ serverStatus, addToast }) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Storage */}
         {serverStatus?.disks && serverStatus.disks.length > 0 && (
           <div className="space-y-3">
             {serverStatus.disks.map((d, idx) => (
               <div key={idx} className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-3 rounded-2xl space-y-1.5">
                 <div className="flex justify-between font-medium">
                   <span className="truncate">{d.mount}</span>
-                  <span className="text-[var(--md-sys-color-on-surface-variant)]">
-                    {d.used} / {d.total}
-                  </span>
+                  <span className="text-[var(--md-sys-color-on-surface-variant)]">{d.used} / {d.total}</span>
                 </div>
                 <div className="w-full bg-[var(--md-sys-color-surface-variant)] h-1 rounded-full overflow-hidden">
-                  <div className="bg-[var(--md-sys-color-primary)] h-full transition-all" style={{ width: `${d.percent}%` }} />
+                  <div 
+                    className="bg-[var(--md-sys-color-primary)] h-full transition-all" 
+                    style={{ width: `${d.percent}%` }}
+                  />
                 </div>
               </div>
             ))}
           </div>
         )}
 
+        {/* Console */}
         <div className="flex flex-col bg-black text-green-400 p-3 rounded-2xl font-mono text-[11px] min-h-[150px] max-h-[250px] overflow-auto relative">
           {loading && (
             <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-black/80 px-2 py-1 rounded-lg border border-green-500/20 text-[10px] animate-pulse">
@@ -1996,12 +1719,10 @@ function BackupView({ serverStatus, addToast }) {
   );
 }
 
-// ─── USERS & SESSIONS VIEW ──────────────────────────────────────────────────
-function UsersView({ addToast, askConfirm, isAdmin }) {
+// ─── USERS VIEW ─────────────────────────────────────────────────────────────
+function UsersView({ addToast, askConfirm }) {
   const [users, setUsers] = useState([]);
   const [sessions, setSessions] = useState([]);
-  const [currentDeviceId, setCurrentDeviceId] = useState('');
-  const [deviceNameInput, setDeviceNameInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -2014,10 +1735,6 @@ function UsersView({ addToast, askConfirm, isAdmin }) {
       if (data.ok) {
         setUsers(data.users || []);
         setSessions(data.sessions || []);
-        setCurrentDeviceId(data.currentDeviceId || '');
-        if (typeof window !== 'undefined') {
-          setDeviceNameInput(localStorage.getItem('srv-device-name') || '');
-        }
       } else {
         addToast(data.error || 'Erro ao carregar usuários.', 'error');
       }
@@ -2039,10 +1756,10 @@ function UsersView({ addToast, askConfirm, isAdmin }) {
     try {
       const data = await apiFetch('/api/users', {
         method: 'POST',
-        body: JSON.stringify({ username: username.trim(), password: password.trim(), role }),
+        body: JSON.stringify({ username: username.trim(), password: password.trim(), role })
       });
       if (data.ok) {
-        addToast(data.updated ? 'Usuário atualizado!' : 'Usuário criado!', 'success');
+        addToast(`Usuário salvo!`, 'success');
         setUsername('');
         setPassword('');
         fetchUsers();
@@ -2058,17 +1775,17 @@ function UsersView({ addToast, askConfirm, isAdmin }) {
   const deleteUser = (name) => {
     if (name === 'admin') return;
     askConfirm({
-      title: 'Excluir usuário',
-      message: `Deseja remover o usuário ${name}?`,
+      title: 'Remover Usuário',
+      message: `Deseja remover ${name}?`,
       danger: true,
       onConfirm: async () => {
         setLoading(true);
         try {
           const data = await apiFetch(`/api/users?username=${encodeURIComponent(name)}`, {
-            method: 'DELETE',
+            method: 'DELETE'
           });
           if (data.ok) {
-            addToast('Usuário removido!', 'success');
+            addToast(`Usuário removido!`, 'success');
             fetchUsers();
           } else {
             addToast(data.error || 'Erro ao excluir.', 'error');
@@ -2081,35 +1798,13 @@ function UsersView({ addToast, askConfirm, isAdmin }) {
     });
   };
 
-  const updateDeviceName = async (e) => {
-    e.preventDefault();
-    const cleanName = deviceNameInput.trim();
-    if (!cleanName) return;
-    try {
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('srv-device-name', cleanName);
-      }
-      const data = await apiFetch('/api/users', {
-        method: 'POST',
-        body: JSON.stringify({ action: 'update_device', deviceName: cleanName }),
-      });
-      if (data.ok) {
-        addToast('Nome do dispositivo atualizado!', 'success');
-        fetchUsers();
-      } else {
-        addToast(data.error || 'Erro ao atualizar dispositivo.', 'error');
-      }
-    } catch {
-      addToast('Erro de conexão.', 'error');
-    }
-  };
-
   const revokeSession = (sessionId, label) => {
     askConfirm({
-      title: 'Revogar sessão',
-      message: `Desconectar remotamente o dispositivo "${label}"?`,
+      title: 'Encerrar Sessão',
+      message: `Desconectar o dispositivo ${label || sessionId}?`,
       danger: true,
       onConfirm: async () => {
+        setLoading(true);
         try {
           const data = await apiFetch(`/api/users?sessionId=${encodeURIComponent(sessionId)}`, {
             method: 'DELETE',
@@ -2121,192 +1816,121 @@ function UsersView({ addToast, askConfirm, isAdmin }) {
             addToast(data.error || 'Erro ao encerrar sessão.', 'error');
           }
         } catch {
-          addToast('Erro de rede.', 'error');
+          addToast('Erro de conexão.', 'error');
         }
+        setLoading(false);
       },
     });
   };
 
   return (
-    <div className="space-y-4 text-xs">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] rounded-2xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-[var(--md-sys-color-surface-variant)] font-semibold flex items-center justify-between">
-            <span>Contas do Painel</span>
-            <button onClick={fetchUsers} className="w-7 h-7 rounded-lg hover:bg-black/5 flex items-center justify-center">
-              <span className="material-symbols-outlined text-base">refresh</span>
-            </button>
-          </div>
-          {loading && users.length === 0 ? (
-            <div className="p-6 text-center">Carregando...</div>
-          ) : (
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-[var(--md-sys-color-surface-variant)]/50 border-b border-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)]">
-                  <th className="text-left py-2 px-3 font-semibold">Usuário</th>
-                  <th className="text-left py-2 px-3 font-semibold">Perfil</th>
-                  <th className="text-center py-2 px-3 font-semibold">Sessões</th>
-                  <th className="text-right py-2 px-3 font-semibold">Ação</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--md-sys-color-surface-variant)]">
-                {users.map((u, idx) => (
-                  <tr key={idx} className="hover:bg-[var(--md-sys-color-surface-variant)]/30 transition-colors">
-                    <td className="py-2 px-3 font-mono font-medium">{u.username}</td>
-                    <td className="py-2 px-3">
-                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-[var(--md-sys-color-surface-variant)]">
-                        {u.role || 'operator'}
-                      </span>
-                    </td>
-                    <td className="py-2 px-3 text-center font-mono">{u.activeSessions || 0}</td>
-                    <td className="py-2 px-3 text-right">
-                      {isAdmin && u.username !== 'admin' ? (
-                        <button
-                          onClick={() => deleteUser(u.username)}
-                          className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-error)]"
-                        >
-                          <span className="material-symbols-outlined text-[16px]">delete</span>
-                        </button>
-                      ) : (
-                        <span className="text-[10px] text-[var(--md-sys-color-on-surface-variant)] italic pr-2 select-none">
-                          {u.username === 'admin' ? 'Mestre' : 'Ativo'}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-4">
-          {isAdmin && (
-            <>
-              <span className="font-semibold block">Criar ou Atualizar Usuário</span>
-              <form onSubmit={addUser} className="space-y-3">
-                <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Usuário (2-32 chars)"
-                  disabled={loading}
-                  required
-                  className="w-full bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3 py-2 outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] text-xs"
-                />
-                <div className="flex gap-2">
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Senha"
-                    disabled={loading}
-                    required
-                    className="flex-1 bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3 py-2 outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] text-xs"
-                  />
-                  <select
-                    value={role}
-                    onChange={(e) => setRole(e.target.value)}
-                    className="bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3 py-2 outline-none text-xs"
-                  >
-                    <option value="operator">Operador</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                </div>
-                <button type="submit" disabled={loading} className="w-full btn-primary py-2 px-4 rounded-xl font-bold flex items-center justify-center gap-1.5">
-                  <span className="material-symbols-outlined text-sm">save</span>
-                  <span>Salvar Usuário</span>
-                </button>
-              </form>
-            </>
-          )}
-
-          <form onSubmit={updateDeviceName} className={`${isAdmin ? 'pt-3 border-t border-[var(--md-sys-color-surface-variant)]' : ''} space-y-2`}>
-            <span className="font-semibold block text-[11px] text-[var(--md-sys-color-on-surface-variant)]">Nome deste dispositivo</span>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={deviceNameInput}
-                onChange={(e) => setDeviceNameInput(e.target.value)}
-                placeholder="Ex: TV Sala / Notebook"
-                className="flex-1 bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3 py-2 outline-none text-xs"
-              />
-              <button type="submit" className="btn-ghost px-3 py-2 rounded-xl font-semibold">
-                Renomear
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-
-      {/* Dispositivos e Sessões Conectadas */}
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
       <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] rounded-2xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-[var(--md-sys-color-surface-variant)] font-semibold flex items-center justify-between">
-          <span>Dispositivos & Sessões ({sessions.length})</span>
-        </div>
-        {sessions.length === 0 ? (
-          <div className="p-6 text-center text-[var(--md-sys-color-on-surface-variant)]">Nenhuma sessão de dispositivo registrada.</div>
+        {loading && users.length === 0 ? (
+          <div className="p-6 text-center">Carregando...</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-[var(--md-sys-color-surface-variant)]/50 border-b border-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)]">
-                  <th className="text-left py-2 px-3 font-semibold">Dispositivo</th>
-                  <th className="text-left py-2 px-3 font-semibold">Usuário</th>
-                  <th className="text-left py-2 px-3 font-semibold hidden sm:table-cell">Rede</th>
-                  <th className="text-left py-2 px-3 font-semibold">Status / App</th>
-                  <th className="text-right py-2 px-3 font-semibold">Ação</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--md-sys-color-surface-variant)]">
-                {sessions.map((s) => (
-                  <tr key={s.deviceId} className="hover:bg-[var(--md-sys-color-surface-variant)]/30">
-                    <td className="py-2 px-3 font-medium">
-                      {s.deviceName}
-                      {s.deviceId === currentDeviceId && (
-                        <span className="ml-1.5 px-1.5 py-0.5 rounded bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] text-[9px] font-bold">
-                          Atual
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-2 px-3 font-mono">{s.username}</td>
-                    <td className="py-2 px-3 text-[10px] text-[var(--md-sys-color-on-surface-variant)] hidden sm:table-cell">
-                      {s.networkScope || 'Sessão Segura'}
-                    </td>
-                    <td className="py-2 px-3">
-                      <span className={s.online ? 'text-[var(--md-sys-color-tertiary)] font-semibold' : 'text-[var(--md-sys-color-on-surface-variant)]'}>
-                        {s.online ? 'Online' : `Inativo (${s.idleSeconds}s)`}
-                      </span>
-                      {s.activeApp && <span className="block text-[10px] text-[var(--md-sys-color-on-surface-variant)]">{s.activeApp}</span>}
-                    </td>
-                    <td className="py-2 px-3 text-right">
-                      <button
-                        onClick={() => revokeSession(s.deviceId, s.deviceName)}
-                        title="Desconectar dispositivo"
-                        className="px-2 py-1 rounded-lg bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)] text-[10px] font-semibold"
-                      >
-                        Revogar
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-[var(--md-sys-color-surface-variant)] border-b border-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)]">
+                <th className="text-left py-2 px-3 font-semibold">Usuário</th>
+                <th className="text-right py-2 px-3 font-semibold">Ação</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--md-sys-color-surface-variant)]">
+              {users.map((u, idx) => (
+                <tr key={idx} className="hover:bg-[var(--md-sys-color-surface-variant)]/30 transition-colors">
+                  <td className="py-2 px-3 font-mono font-medium">{u.username}</td>
+                  <td className="py-2 px-3 text-right">
+                    {u.username !== 'admin' ? (
+                      <button onClick={() => deleteUser(u.username)} className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-error)]">
+                        <span className="material-symbols-outlined text-[16px]">delete</span>
                       </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    ) : (
+                      <span className="text-[10px] text-[var(--md-sys-color-on-surface-variant)] italic pr-2 select-none">Mestre</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
+
+      <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl">
+        <form onSubmit={addUser} className="space-y-3">
+          <input
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Usuário"
+            disabled={loading}
+            required
+            className="w-full bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3 py-2 outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] text-xs"
+          />
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Senha"
+            disabled={loading}
+            required
+            className="w-full bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3 py-2 outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] text-xs"
+          />
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            disabled={loading}
+            className="w-full bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3 py-2 outline-none border border-transparent focus:border-[var(--md-sys-color-primary)] text-xs"
+          >
+            <option value="operator">Operador</option>
+            <option value="admin">Administrador</option>
+          </select>
+          <button type="submit" disabled={loading} className="w-full btn-primary py-2 px-4 rounded-xl font-bold flex items-center justify-center gap-1.5">
+            <span className="material-symbols-outlined text-sm">save</span>
+            <span>Salvar</span>
+          </button>
+        </form>
+      </div>
+
+      {sessions.length > 0 && (
+        <div className="lg:col-span-2 border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] rounded-2xl overflow-hidden">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-[var(--md-sys-color-surface-variant)] border-b border-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface-variant)]">
+                <th className="text-left py-2 px-3 font-semibold">Dispositivo</th>
+                <th className="text-left py-2 px-3 font-semibold">Usuário</th>
+                <th className="text-left py-2 px-3 font-semibold hidden sm:table-cell">Rede</th>
+                <th className="text-right py-2 px-3 font-semibold">Ação</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--md-sys-color-surface-variant)]">
+              {sessions.map((s, idx) => (
+                <tr key={s.deviceId || idx} className="hover:bg-[var(--md-sys-color-surface-variant)]/30 transition-colors">
+                  <td className="py-2 px-3 font-medium truncate max-w-[160px]">{s.deviceName || 'Dispositivo'}</td>
+                  <td className="py-2 px-3 font-mono">{s.username}</td>
+                  <td className="py-2 px-3 hidden sm:table-cell text-[var(--md-sys-color-on-surface-variant)]">{s.networkScope || 'Conexão Segura'}</td>
+                  <td className="py-2 px-3 text-right">
+                    <button onClick={() => revokeSession(s.deviceId, s.deviceName)} title="Encerrar sessão" className="w-7 h-7 rounded-lg hover:bg-black/5 inline-flex items-center justify-center text-[var(--md-sys-color-error)]">
+                      <span className="material-symbols-outlined text-[16px]">logout</span>
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── MAINTENANCE & CONTROL CENTER VIEW ─────────────────────────────────────
-function MaintenanceView({ addToast, fetchStatus, askConfirm }) {
-  const [subTab, setSubTab] = useState('terminal'); // terminal, system, maintenance, logs
+function MaintenanceView({ serverStatus, addToast, fetchStatus, askConfirm }) {
+  const [subTab, setSubTab] = useState('terminal'); // terminal, system, maintenance
   const [output, setOutput] = useState('');
   const [loading, setLoading] = useState(false);
   const [vpnLoading, setVpnLoading] = useState(false);
-  const [vpnInfo, setVpnInfo] = useState({ output: '', loggedOut: false, authUrl: null });
-  const [envInfo, setEnvInfo] = useState(null);
+  const [vpnStatus, setVpnStatus] = useState('');
 
   // Terminal Direto HTTPS states
   const [cmdInput, setCmdInput] = useState('');
@@ -2315,15 +1939,9 @@ function MaintenanceView({ addToast, fetchStatus, askConfirm }) {
   const [termRunning, setTermRunning] = useState(false);
   const termEndRef = useRef(null);
 
-  // System Control states
+  // System Control states (Processes + Systemd Services + Tunnels)
   const [sysData, setSysData] = useState({ processes: [], services: [], listeningPorts: [], activeTunnels: [] });
   const [sysLoading, setSysLoading] = useState(false);
-
-  // Audit logs states
-  const [auditLogs, setAuditLogs] = useState([]);
-  const [logsLoading, setLogsLoading] = useState(false);
-  const [logLevel, setLogLevel] = useState('all');
-  const [logSearch, setLogSearch] = useState('');
 
   const runDirectCommand = async (customCmd) => {
     const commandToRun = (typeof customCmd === 'string' ? customCmd : cmdInput).trim();
@@ -2383,8 +2001,8 @@ function MaintenanceView({ addToast, fetchStatus, askConfirm }) {
 
   const handleKillProcess = (pid, comm) => {
     askConfirm({
-      title: 'Encerrar processo',
-      message: `Deseja encerrar o processo ${comm} (PID ${pid})?`,
+      title: 'Encerrar Processo',
+      message: `Encerrar processo ${comm} (PID ${pid})?`,
       danger: true,
       onConfirm: async () => {
         try {
@@ -2429,8 +2047,8 @@ function MaintenanceView({ addToast, fetchStatus, askConfirm }) {
   const runMaintenance = (action, title) => {
     askConfirm({
       title,
-      message: `Deseja executar "${title}" no servidor remoto?`,
-      danger: action === 'update',
+      message: `Executar: ${title}?`,
+      danger: action === 'clean',
       onConfirm: async () => {
         setLoading(true);
         setOutput('');
@@ -2452,46 +2070,31 @@ function MaintenanceView({ addToast, fetchStatus, askConfirm }) {
     setVpnLoading(true);
     try {
       const data = await apiFetch('/api/vpn/status');
-      setVpnInfo({
-        output: data.output || 'Não foi possível obter status.',
-        loggedOut: Boolean(data.loggedOut),
-        authUrl: data.authUrl || null,
-      });
+      setVpnStatus(data.output || 'Não foi possível obter status.');
     } catch {
-      setVpnInfo({ output: 'Erro ao conectar.', loggedOut: false, authUrl: null });
+      setVpnStatus('Erro ao conectar.');
     }
     setVpnLoading(false);
   }, []);
 
-  const fetchDebugEnv = useCallback(async () => {
-    try {
-      const data = await apiFetch('/api/debug-env');
-      if (data.ok) setEnvInfo(data.env || null);
-    } catch {}
-  }, []);
-
   const toggleVpn = (action) => {
     askConfirm({
-      title: action === 'start' ? 'Ativar VPN Tailscale' : 'Desativar VPN Tailscale',
-      message: `Deseja ${action === 'start' ? 'ativar' : 'desativar'} a VPN Tailscale no servidor?`,
-      danger: action === 'stop',
+      title: 'VPN Tailscale',
+      message: `Deseja ${action === 'start' ? 'ativar' : 'desativar'} a VPN?`,
+      danger: action !== 'start',
       onConfirm: async () => {
         setVpnLoading(true);
         try {
           const data = await apiFetch('/api/vpn/status', {
             method: 'POST',
-            body: JSON.stringify({ action: action === 'start' ? 'up' : 'down' }),
+            body: JSON.stringify({ action: action === 'start' ? 'up' : 'down' })
           });
           if (data.ok) {
-            addToast(data.message || 'Comando VPN enviado!', data.needsAuth ? 'info' : 'success');
-            if (data.authUrl) {
-              setVpnInfo({ output: data.output || data.message, loggedOut: true, authUrl: data.authUrl });
-            } else {
-              setTimeout(() => {
-                getVpnStatus();
-                fetchStatus();
-              }, 3000);
-            }
+            addToast(`Comando VPN enviado!`, 'success');
+            setTimeout(() => {
+              getVpnStatus();
+              fetchStatus();
+            }, 5000);
           } else {
             addToast(data.error || 'Erro ao executar.', 'error');
           }
@@ -2503,53 +2106,10 @@ function MaintenanceView({ addToast, fetchStatus, askConfirm }) {
     });
   };
 
-  const fetchAuditLogs = useCallback(async () => {
-    setLogsLoading(true);
-    try {
-      const params = new URLSearchParams({
-        limit: '150',
-        level: logLevel,
-        ...(logSearch.trim() ? { search: logSearch.trim() } : {}),
-      });
-      const data = await apiFetch(`/api/logs?${params.toString()}`);
-      if (data.ok) {
-        setAuditLogs(data.logs || []);
-      } else {
-        addToast(data.error || 'Erro ao carregar auditoria.', 'error');
-      }
-    } catch {
-      addToast('Erro de rede.', 'error');
-    }
-    setLogsLoading(false);
-  }, [logLevel, logSearch, addToast]);
-
-  const clearLogs = () => {
-    askConfirm({
-      title: 'Limpar logs de auditoria',
-      message: 'Deseja limpar os registros locais e remotos de auditoria?',
-      danger: true,
-      onConfirm: async () => {
-        try {
-          const data = await apiFetch('/api/logs', { method: 'DELETE' });
-          if (data.ok) {
-            addToast('Logs limpos.', 'success');
-            fetchAuditLogs();
-          }
-        } catch {
-          addToast('Erro ao limpar logs.', 'error');
-        }
-      },
-    });
-  };
-
   useEffect(() => {
     if (subTab === 'system') fetchSystemControl();
-    if (subTab === 'maintenance') {
-      getVpnStatus();
-      fetchDebugEnv();
-    }
-    if (subTab === 'logs') fetchAuditLogs();
-  }, [subTab, fetchSystemControl, getVpnStatus, fetchDebugEnv, fetchAuditLogs]);
+    if (subTab === 'maintenance') getVpnStatus();
+  }, [subTab, fetchSystemControl, getVpnStatus]);
 
   const quickCommands = [
     { label: 'Status Geral', cmd: 'uptime && free -h && df -h /' },
@@ -2564,27 +2124,42 @@ function MaintenanceView({ addToast, fetchStatus, askConfirm }) {
 
   return (
     <div className="space-y-4 text-xs">
+      {/* Sub-navigation */}
       <div className="flex flex-wrap items-center justify-between gap-2 bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] p-2 rounded-2xl">
         <div className="flex flex-wrap gap-1.5">
-          {[
-            { id: 'terminal', label: 'Console SSH Direto', icon: 'terminal' },
-            { id: 'system', label: 'Processos & Serviços', icon: 'monitoring' },
-            { id: 'maintenance', label: 'VPN & Manutenção', icon: 'build' },
-            { id: 'logs', label: 'Auditoria & Erros', icon: 'history' },
-          ].map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setSubTab(item.id)}
-              className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${
-                subTab === item.id
-                  ? 'bg-[var(--md-sys-color-primary)] text-white'
-                  : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
-              }`}
-            >
-              <span className="material-symbols-outlined text-[16px]">{item.icon}</span>
-              <span>{item.label}</span>
-            </button>
-          ))}
+          <button
+            onClick={() => setSubTab('terminal')}
+            className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${
+              subTab === 'terminal'
+                ? 'bg-[var(--md-sys-color-primary)] text-white'
+                : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px]">terminal</span>
+            <span>Console SSH Direto</span>
+          </button>
+          <button
+            onClick={() => setSubTab('system')}
+            className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${
+              subTab === 'system'
+                ? 'bg-[var(--md-sys-color-primary)] text-white'
+                : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px]">monitoring</span>
+            <span>Processos & Serviços</span>
+          </button>
+          <button
+            onClick={() => setSubTab('maintenance')}
+            className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${
+              subTab === 'maintenance'
+                ? 'bg-[var(--md-sys-color-primary)] text-white'
+                : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-variant)]'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px]">build</span>
+            <span>VPN & Manutenção</span>
+          </button>
         </div>
 
         {subTab === 'system' && (
@@ -2599,7 +2174,7 @@ function MaintenanceView({ addToast, fetchStatus, askConfirm }) {
         )}
       </div>
 
-      {/* 1. CONSOLE SSH DIRETO */}
+      {/* 1. CONSOLE SSH DIRETO VIA HTTPS (Funciona em qualquer rede / 4G / Vercel sem abrir portas extras) */}
       {subTab === 'terminal' && (
         <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-3">
           <div className="flex flex-wrap gap-1.5">
@@ -2623,13 +2198,15 @@ function MaintenanceView({ addToast, fetchStatus, askConfirm }) {
 
           <div className="bg-black text-green-400 font-mono text-[11px] p-3.5 rounded-xl h-[360px] overflow-y-auto space-y-2 border border-gray-800">
             {termHistory.length === 0 ? (
-              <div className="text-gray-500">Console SSH Direto via HTTPS (com estado de diretório persistente)</div>
+              <div className="text-gray-500">
+                Console SSH
+              </div>
             ) : (
               termHistory.map((item, i) => (
                 <div key={i}>
                   {item.type === 'cmd' && (
                     <div className="text-cyan-400 font-bold">
-                      srv:{item.cwd}$ <span className="text-white font-normal">{item.text}</span>
+                      rodrigo@srv:{item.cwd}$ <span className="text-white font-normal">{item.text}</span>
                     </div>
                   )}
                   {item.type === 'out' && (
@@ -2638,11 +2215,15 @@ function MaintenanceView({ addToast, fetchStatus, askConfirm }) {
                       {item.exitCode !== 0 ? `\n[Exit Code: ${item.exitCode}]` : ''}
                     </pre>
                   )}
-                  {item.type === 'err' && <pre className="whitespace-pre-wrap text-red-400 pl-1">{item.text}</pre>}
+                  {item.type === 'err' && (
+                    <pre className="whitespace-pre-wrap text-red-400 pl-1">{item.text}</pre>
+                  )}
                 </div>
               ))
             )}
-            {termRunning && <div className="text-yellow-400 animate-pulse">Executando comando no servidor...</div>}
+            {termRunning && (
+              <div className="text-yellow-400 animate-pulse">Executando comando no servidor...</div>
+            )}
             <div ref={termEndRef} />
           </div>
 
@@ -2653,7 +2234,9 @@ function MaintenanceView({ addToast, fetchStatus, askConfirm }) {
             }}
             className="flex gap-2"
           >
-            <span className="px-2.5 py-2 rounded-xl bg-black text-cyan-400 font-mono text-[11px] flex items-center">{cwd}$</span>
+            <span className="px-2.5 py-2 rounded-xl bg-black text-cyan-400 font-mono text-[11px] flex items-center">
+              {cwd}$
+            </span>
             <input
               type="text"
               value={cmdInput}
@@ -2662,7 +2245,11 @@ function MaintenanceView({ addToast, fetchStatus, askConfirm }) {
               disabled={termRunning}
               className="flex-1 bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3.5 py-2 font-mono text-xs outline-none border border-transparent focus:border-[var(--md-sys-color-primary)]"
             />
-            <button type="submit" disabled={termRunning || !cmdInput.trim()} className="btn-primary px-4 py-2 rounded-xl font-bold flex items-center gap-1">
+            <button
+              type="submit"
+              disabled={termRunning || !cmdInput.trim()}
+              className="btn-primary px-4 py-2 rounded-xl font-bold flex items-center gap-1"
+            >
               <span className="material-symbols-outlined text-sm">send</span>
               <span>Executar</span>
             </button>
@@ -2670,34 +2257,43 @@ function MaintenanceView({ addToast, fetchStatus, askConfirm }) {
         </div>
       )}
 
-      {/* 2. PROCESSOS, SERVIÇOS & TÚNEIS */}
+      {/* 2. GERENCIADOR DE PROCESSOS, SERVIÇOS SYSTEMD & TÚNEIS ATIVOS */}
       {subTab === 'system' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Serviços Systemd & Túneis */}
           <div className="space-y-4">
             <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-3">
               <span className="font-semibold text-xs flex items-center gap-1.5">
                 <span className="material-symbols-outlined text-[var(--md-sys-color-primary)]">settings_applications</span>
                 Serviços Críticos do Servidor (systemd)
               </span>
-              <div className="divide-y divide-[var(--md-sys-color-surface-variant)] max-h-[340px] overflow-y-auto">
+              <div className="divide-y divide-[var(--md-sys-color-surface-variant)]">
                 {sysData.services.map((srv, idx) => (
                   <div key={idx} className="py-2 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full ${srv.active ? 'bg-[var(--md-sys-color-tertiary)]' : 'bg-[var(--md-sys-color-error)]'}`} />
                       <span className="font-mono font-semibold">{srv.name}</span>
                       <span className="text-[10px] text-[var(--md-sys-color-on-surface-variant)]">({srv.state})</span>
                     </div>
                     <div className="flex gap-1">
                       {!srv.active ? (
-                        <button onClick={() => handleServiceAction(srv.name, 'start')} className="px-2 py-1 rounded-lg bg-green-600 text-white text-[10px] font-bold">
+                        <button
+                          onClick={() => handleServiceAction(srv.name, 'start')}
+                          className="px-2 py-1 rounded-lg bg-green-600 text-white text-[10px] font-bold"
+                        >
                           Iniciar
                         </button>
                       ) : (
-                        <button onClick={() => handleServiceAction(srv.name, 'stop')} className="px-2 py-1 rounded-lg bg-red-600/80 text-white text-[10px] font-bold">
+                        <button
+                          onClick={() => handleServiceAction(srv.name, 'stop')}
+                          className="px-2 py-1 rounded-lg bg-red-600/80 text-white text-[10px] font-bold"
+                        >
                           Parar
                         </button>
                       )}
-                      <button onClick={() => handleServiceAction(srv.name, 'restart')} className="px-2 py-1 rounded-lg bg-[var(--md-sys-color-surface-variant)] text-[10px] font-semibold">
+                      <button
+                        onClick={() => handleServiceAction(srv.name, 'restart')}
+                        className="px-2 py-1 rounded-lg bg-[var(--md-sys-color-surface-variant)] text-[10px] font-semibold"
+                      >
                         Reiniciar
                       </button>
                     </div>
@@ -2712,11 +2308,9 @@ function MaintenanceView({ addToast, fetchStatus, askConfirm }) {
                 Túneis Remotos & Portas em Escuta
               </span>
               {sysData.activeTunnels.length > 0 && (
-                <div className="p-2.5 rounded-xl bg-black text-green-400 font-mono text-[11px] space-y-1 max-h-[180px] overflow-y-auto">
+                <div className="p-2.5 rounded-xl bg-black text-green-400 font-mono text-[11px] space-y-1">
                   {sysData.activeTunnels.map((t, i) => (
-                    <div key={i} className="truncate">
-                      🔗 {t}
-                    </div>
+                    <div key={i}>🔗 {t}</div>
                   ))}
                 </div>
               )}
@@ -2730,6 +2324,7 @@ function MaintenanceView({ addToast, fetchStatus, askConfirm }) {
             </div>
           </div>
 
+          {/* Top Processos CPU / RAM */}
           <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] rounded-2xl overflow-hidden flex flex-col">
             <div className="p-3.5 border-b border-[var(--md-sys-color-surface-variant)] font-semibold flex items-center justify-between">
               <span>Top Processos (CPU / RAM)</span>
@@ -2796,19 +2391,8 @@ function MaintenanceView({ addToast, fetchStatus, askConfirm }) {
                 </button>
               </div>
 
-              {vpnInfo.authUrl && (
-                <a
-                  href={vpnInfo.authUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block p-2.5 rounded-xl bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] font-semibold text-center hover:opacity-90"
-                >
-                  Autenticar Tailscale no Navegador ↗
-                </a>
-              )}
-
               <pre className="p-3 bg-black text-green-400 font-mono text-[10px] rounded-xl max-h-[120px] overflow-auto whitespace-pre-wrap">
-                {vpnLoading ? 'Carregando status...' : vpnInfo.output}
+                {vpnLoading ? 'Carregando status...' : vpnStatus}
               </pre>
             </div>
 
@@ -2818,11 +2402,7 @@ function MaintenanceView({ addToast, fetchStatus, askConfirm }) {
                 Manutenção
               </span>
               <div className="flex gap-2">
-                <button
-                  onClick={() => runMaintenance('clean', 'Limpar Lixo')}
-                  disabled={loading}
-                  className="btn-ghost py-2 px-3 rounded-xl font-bold flex-1 flex items-center justify-center gap-1 text-[var(--md-sys-color-error)] border-[var(--md-sys-color-error)]/20 hover:bg-[var(--md-sys-color-error-container)]"
-                >
+                <button onClick={() => runMaintenance('clean', 'Limpar Lixo')} disabled={loading} className="btn-ghost py-2 px-3 rounded-xl font-bold flex-1 flex items-center justify-center gap-1 text-[var(--md-sys-color-error)] border-[var(--md-sys-color-error)]/20 hover:bg-[var(--md-sys-color-error-container)]">
                   <span className="material-symbols-outlined text-sm">delete_sweep</span>
                   <span>Limpar</span>
                 </button>
@@ -2832,30 +2412,9 @@ function MaintenanceView({ addToast, fetchStatus, askConfirm }) {
                 </button>
               </div>
             </div>
-
-            {envInfo && (
-              <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-2">
-                <span className="font-semibold text-xs flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-[var(--md-sys-color-primary)]">verified_user</span>
-                  Ambiente Vercel / Integrações
-                </span>
-                <div className="flex flex-wrap gap-1.5 text-[10px]">
-                  {Object.entries(envInfo.CONFIGURED_SECRETS || {}).map(([k, ok]) => (
-                    <span
-                      key={k}
-                      className={`px-2 py-0.5 rounded-full font-mono ${
-                        ok ? 'bg-green-500/10 text-green-600' : 'bg-gray-500/10 text-gray-500'
-                      }`}
-                    >
-                      {k}: {ok ? 'OK' : 'N/D'}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
-          <div className="flex flex-col bg-black text-green-400 p-3 rounded-2xl font-mono text-[11px] min-h-[200px] max-h-[360px] overflow-auto">
+          <div className="flex flex-col bg-black text-green-400 p-3 rounded-2xl font-mono text-[11px] min-h-[200px] max-h-[300px] overflow-auto">
             {loading ? (
               <div className="flex items-center gap-2 animate-pulse">
                 <span className="animate-spin material-symbols-outlined text-sm">sync</span>
@@ -2867,88 +2426,12 @@ function MaintenanceView({ addToast, fetchStatus, askConfirm }) {
           </div>
         </div>
       )}
-
-      {/* 4. AUDITORIA & ERROS */}
-      {subTab === 'logs' && (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2 bg-[var(--md-sys-color-surface)] border border-[var(--md-sys-color-surface-variant)] p-3 rounded-2xl">
-            <select
-              value={logLevel}
-              onChange={(e) => setLogLevel(e.target.value)}
-              className="bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-2.5 py-1.5 text-xs outline-none"
-            >
-              <option value="all">Todos os níveis</option>
-              <option value="info">Info</option>
-              <option value="warn">Alertas (Warn)</option>
-              <option value="error">Erros</option>
-            </select>
-            <input
-              type="text"
-              value={logSearch}
-              onChange={(e) => setLogSearch(e.target.value)}
-              placeholder="Buscar rota, dispositivo, erro..."
-              className="flex-1 min-w-[160px] bg-[var(--md-sys-color-surface-variant)] text-[var(--md-sys-color-on-surface)] rounded-xl px-3 py-1.5 text-xs outline-none"
-            />
-            <button onClick={fetchAuditLogs} disabled={logsLoading} className="btn-primary px-3 py-1.5 rounded-xl font-semibold flex items-center gap-1">
-              <span className={`material-symbols-outlined text-sm ${logsLoading ? 'animate-spin' : ''}`}>refresh</span>
-              <span>Atualizar</span>
-            </button>
-            <button onClick={clearLogs} className="btn-danger px-3 py-1.5 rounded-xl font-semibold flex items-center gap-1">
-              <span className="material-symbols-outlined text-sm">delete_sweep</span>
-              <span>Limpar</span>
-            </button>
-          </div>
-
-          <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] rounded-2xl overflow-hidden max-h-[420px] overflow-y-auto divide-y divide-[var(--md-sys-color-surface-variant)]">
-            {logsLoading && auditLogs.length === 0 ? (
-              <div className="p-6 text-center">Carregando logs...</div>
-            ) : auditLogs.length === 0 ? (
-              <div className="p-6 text-center text-[var(--md-sys-color-on-surface-variant)]">Nenhum registro encontrado.</div>
-            ) : (
-              auditLogs.map((item, idx) => (
-                <div key={item.id || idx} className="p-3 space-y-1 hover:bg-[var(--md-sys-color-surface-variant)]/30">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span
-                        className={`px-1.5 py-0.5 rounded font-bold uppercase text-[9px] ${
-                          item.level === 'error'
-                            ? 'bg-red-500/15 text-red-600'
-                            : item.level === 'warn'
-                            ? 'bg-amber-500/15 text-amber-600'
-                            : 'bg-blue-500/10 text-blue-600'
-                        }`}
-                      >
-                        {item.level || 'info'}
-                      </span>
-                      <span className="font-semibold truncate">{item.route || item.action || item.message}</span>
-                      {item.selfHealed && (
-                        <span className="px-1.5 py-0.5 rounded bg-green-500/15 text-green-600 text-[9px] font-bold">Auto-corrigido</span>
-                      )}
-                    </div>
-                    <span className="text-[10px] font-mono text-[var(--md-sys-color-on-surface-variant)]">
-                      {item.timestamp ? new Date(item.timestamp).toLocaleString('pt-BR') : ''}
-                    </span>
-                  </div>
-                  <div className="text-[11px] text-[var(--md-sys-color-on-surface-variant)] flex flex-wrap gap-x-3 gap-y-0.5">
-                    {item.user && <span>Usuário: {item.user}</span>}
-                    {item.deviceName && <span>Disp: {item.deviceName}</span>}
-                    {item.sshRoute && <span>Rota: {item.sshRoute}</span>}
-                    {item.responseTime && <span>Tempo: {item.responseTime}</span>}
-                  </div>
-                  {item.rootCause && <p className="text-[10px] text-[var(--md-sys-color-error)]">Causa: {item.rootCause}</p>}
-                  {item.remediationAction && <p className="text-[10px] text-[var(--md-sys-color-tertiary)]">Ação: {item.remediationAction}</p>}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
 // ─── VM VIEW (Windows Update Automation) ────────────────────────────────────
-function VmView({ addToast, askConfirm, isAdmin, openWindowsApp }) {
+function VmView({ serverStatus, addToast, askConfirm, isAdmin, openWindowsApp }) {
   const [output, setOutput] = useState('');
   const [winStatus, setWinStatus] = useState({ isos: { win10: false, win11: false }, vmRunning: false, reports: [] });
   const [winLoading, setWinLoading] = useState(false);
@@ -2970,14 +2453,14 @@ function VmView({ addToast, askConfirm, isAdmin, openWindowsApp }) {
     const title = action === 'start_vm' ? 'Iniciar VM de Testes' : 'Parar VM de Testes';
     askConfirm({
       title,
-      message: `Deseja ${title.toLowerCase()} no servidor?`,
-      danger: action === 'stop_vm',
+      message: `Deseja ${title}?`,
+      danger: action !== 'start_vm',
       onConfirm: async () => {
         setWinLoading(true);
         try {
           const data = await apiFetch('/api/maintenance/windows', {
             method: 'POST',
-            body: JSON.stringify({ action }),
+            body: JSON.stringify({ action })
           });
           if (data.ok) {
             addToast(`${title} executado!`, 'success');
@@ -3001,18 +2484,20 @@ function VmView({ addToast, askConfirm, isAdmin, openWindowsApp }) {
   return (
     <div className="space-y-4 text-xs">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Left Column: VM & ISOs Card */}
         <div className="space-y-4">
           <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-3">
             <div className="flex items-center justify-between">
               <span className="font-semibold text-xs flex items-center gap-1.5">
                 <span className="material-symbols-outlined text-[var(--md-sys-color-primary)]">desktop_windows</span>
-                Automação Windows (VM & Update)
+                Automação Windows (Update)
               </span>
               <button onClick={fetchWindowsStatus} disabled={winLoading} className="w-7 h-7 rounded-lg hover:bg-black/5 flex items-center justify-center">
                 <span className="material-symbols-outlined text-base">refresh</span>
               </button>
             </div>
 
+            {/* Status das ISOs e da VM */}
             <div className="grid grid-cols-3 gap-2 text-[10px]">
               <div className="p-2 rounded-xl bg-black/5 flex flex-col items-center justify-center text-center">
                 <span className="font-semibold text-gray-500">Win10 ISO</span>
@@ -3034,20 +2519,21 @@ function VmView({ addToast, askConfirm, isAdmin, openWindowsApp }) {
               </div>
             </div>
 
+            {/* Controles da VM */}
             {isAdmin && (
               <div className="flex gap-2">
-                <button
-                  onClick={() => toggleWinVm('start_vm')}
-                  disabled={winLoading || winStatus.vmRunning}
-                  className="btn-primary py-2 px-3 rounded-xl font-bold flex-1 flex items-center justify-center gap-1 disabled:opacity-50"
+                <button 
+                  onClick={() => toggleWinVm('start_vm')} 
+                  disabled={winLoading || winStatus.vmRunning} 
+                  className="btn-primary py-2 px-3 rounded-xl font-bold flex-1 flex items-center justify-center gap-1"
                 >
                   <span className="material-symbols-outlined text-sm">play_arrow</span>
                   <span>Ligar VM</span>
                 </button>
-                <button
-                  onClick={() => toggleWinVm('stop_vm')}
-                  disabled={winLoading || !winStatus.vmRunning}
-                  className="btn-danger py-2 px-3 rounded-xl font-bold flex-1 flex items-center justify-center gap-1 disabled:opacity-50"
+                <button 
+                  onClick={() => toggleWinVm('stop_vm')} 
+                  disabled={winLoading || !winStatus.vmRunning} 
+                  className="btn-danger py-2 px-3 rounded-xl font-bold flex-1 flex items-center justify-center gap-1"
                 >
                   <span className="material-symbols-outlined text-sm">stop</span>
                   <span>Desligar VM</span>
@@ -3055,30 +2541,30 @@ function VmView({ addToast, askConfirm, isAdmin, openWindowsApp }) {
               </div>
             )}
 
-            {winStatus.vmRunning && (
-              <div className="bg-black/5 p-3 rounded-xl space-y-2 animate-fade-in">
+            {/* VM Connection */}
+            {winStatus.vmRunning && openWindowsApp && (
+              <div className="bg-black/5 p-3 rounded-xl space-y-2 animate-fadeIn">
                 <button onClick={openWindowsApp} className="w-full btn-primary py-2 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5">
                   <span className="material-symbols-outlined text-sm">open_in_browser</span>
-                  <span>Abrir Tela do Windows no Painel (HTTPS)</span>
+                  <span>Abrir Windows no Painel</span>
                 </button>
-                <div className="space-y-1 text-[10px] text-[var(--md-sys-color-on-surface-variant)]">
-                  <div>
-                    Acesso gráfico remoto criptografado pelo túnel seguro do painel
-                  </div>
-                </div>
               </div>
             )}
           </div>
         </div>
 
+        {/* Right Column: Console / Reports */}
         <div className="space-y-4">
+          {/* Relatório das Máquinas da Rede */}
           <div className="border border-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] p-4 rounded-2xl space-y-3 flex flex-col h-full min-h-[300px]">
             <span className="font-semibold text-xs text-[var(--md-sys-color-on-surface)] block">
               Relatórios de Atualização da Rede ({winStatus.reports?.length || 0})
             </span>
             <div className="flex-1 overflow-y-auto border border-[var(--md-sys-color-surface-variant)] rounded-xl divide-y divide-[var(--md-sys-color-surface-variant)] bg-[var(--md-sys-color-surface)] max-h-[400px]">
               {!winStatus.reports || winStatus.reports.length === 0 ? (
-                <div className="p-4 text-center text-gray-500 text-xs">Nenhum relatório de máquina encontrado.</div>
+                <div className="p-4 text-center text-gray-500 text-xs">
+                  Nenhum relatório de máquina encontrado.
+                </div>
               ) : (
                 winStatus.reports.map((rep, idx) => (
                   <div key={idx} className="p-3 flex items-start justify-between gap-3 hover:bg-black/5 transition-colors">
@@ -3090,20 +2576,13 @@ function VmView({ addToast, askConfirm, isAdmin, openWindowsApp }) {
                       <p className="text-gray-500 text-[10px] truncate max-w-xs">{rep.message}</p>
                     </div>
                     <div className="text-right flex-shrink-0 space-y-1">
-                      <span
-                        className={`px-2 py-0.5 rounded-full font-bold text-[9px] ${
-                          rep.status === 'SUCESSO'
-                            ? 'bg-green-500/10 text-green-600'
-                            : rep.status === 'IGNORADO'
-                            ? 'bg-gray-500/10 text-gray-500'
-                            : 'bg-red-500/10 text-red-600'
-                        }`}
-                      >
+                      <span className={`px-2 py-0.5 rounded-full font-bold text-[9px] ${
+                        rep.status === 'SUCESSO' ? 'bg-green-500/10 text-green-600' :
+                        rep.status === 'IGNORADO' ? 'bg-gray-500/10 text-gray-500' : 'bg-red-500/10 text-red-600'
+                      }`}>
                         {rep.status}
                       </span>
-                      <span className="block text-[9px] text-gray-400 font-mono">
-                        {rep.date} {rep.time}
-                      </span>
+                      <span className="block text-[9px] text-gray-400 font-mono">{rep.date} {rep.time}</span>
                     </div>
                   </div>
                 ))
@@ -3113,11 +2592,45 @@ function VmView({ addToast, askConfirm, isAdmin, openWindowsApp }) {
         </div>
       </div>
 
+      {/* Live Output */}
       {output && (
         <div className="flex flex-col bg-black text-green-400 p-3 rounded-2xl font-mono text-[11px] max-h-[150px] overflow-auto">
           <pre className="whitespace-pre-wrap">{output}</pre>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── SSH SANDBOX HELPER VIEW ────────────────────────────────────────────────
+function AntigravitySshView({ host, addToast }) {
+  const [copied, setCopied] = useState(false);
+  const sshCmd = `ssh root@${host || 'servidor'} -p 2222`;
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(sshCmd);
+    setCopied(true);
+    addToast('Copiado!', 'success');
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center max-w-sm mx-auto space-y-4">
+      <h3 className="text-xs font-semibold text-[var(--md-sys-color-on-surface)]">
+        Antigravity SSH
+      </h3>
+      <div className="w-full bg-black text-green-400 p-3 rounded-xl font-mono text-[11px] text-left border border-gray-800 flex items-center justify-between select-all">
+        <span className="truncate">{sshCmd}</span>
+        <button 
+          onClick={copyToClipboard}
+          className="ml-2 bg-gray-900 hover:bg-gray-800 text-green-400 border border-gray-700 p-1.5 rounded-lg flex items-center justify-center transition-colors flex-shrink-0"
+          title="Copiar"
+        >
+          <span className="material-symbols-outlined text-xs">
+            {copied ? 'check' : 'content_copy'}
+          </span>
+        </button>
+      </div>
     </div>
   );
 }

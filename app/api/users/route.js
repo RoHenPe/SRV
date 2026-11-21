@@ -122,7 +122,7 @@ export async function POST(request) {
       );
     }
 
-    const validRole = role === 'admin' ? 'admin' : 'operator';
+    const validRole = cleanUsername === 'admin' || role === 'admin' ? 'admin' : 'operator';
     const users = await getUsers();
     const existingIdx = users.findIndex((u) => u.username === cleanUsername);
     const isUpdate = existingIdx > -1;
