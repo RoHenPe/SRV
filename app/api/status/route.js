@@ -1,4 +1,4 @@
-import { runSSH, apiHandler, getCachedTunnels } from '@/lib/ssh';
+import { runSSH, apiHandler, getCachedTunnels, updateBridgeState } from '@/lib/ssh';
 import { getActiveSessions } from '@/lib/auth';
 
 let cachedStatusData = null;
@@ -12,7 +12,7 @@ function sanitizePublicTunnels(rawTunnels) {
   for (const [k, v] of Object.entries(rawTunnels)) {
     if (
       typeof v === 'string' &&
-      /^https:\/\/[-a-zA-Z0-9]+\.(?:trycloudflare\.com|ngrok(?:-free)?\.(?:app|io))$/i.test(v.trim())
+      /^https:\/\/[-a-zA-Z0-9]+\.(?:trycloudflare\.com|ngrok(?:-free)?\.(?:app|dev|io))$/i.test(v.trim())
     ) {
       clean[k] = v.trim();
     }
@@ -81,12 +81,28 @@ function parseStatus(stdout) {
 
 async function fetchServerStatus() {
   const combinedCmd =
-    'uptime && free -m && df -h && echo "===DOCKER===" && (docker ps --format "{{.Names}}" || true)';
+    'uptime && free -m && df -h && echo "===DOCKER===" && (docker ps --format "{{.Names}}" || true) && echo "===TUNNELS===" && (cat ~/.cloudflare_tunnels.json 2>/dev/null || echo "{}")';
   const result = await runSSH(combinedCmd);
 
   const parts = result.stdout.split(/===[A-Z0-9_]+===/);
   const sysStdout = parts[0] || '';
   const dockerStdout = parts[1] || '';
+  const tunnelsStdout = (parts[2] || '').trim();
+
+  let fileTunnels = {};
+  if (tunnelsStdout) {
+    try {
+      const jsonMatch = tunnelsStdout.match(/\{[\s\S]*\}/);
+      const parsedTunnels = JSON.parse(jsonMatch ? jsonMatch[0] : tunnelsStdout);
+      if (parsedTunnels && typeof parsedTunnels === 'object') {
+        fileTunnels = parsedTunnels;
+        updateBridgeState({
+          cfBridgeUrl: parsedTunnels['18022'] || null,
+          tunnels: parsedTunnels,
+        });
+      }
+    } catch (_) {}
+  }
 
   const runningContainers = dockerStdout
     ? dockerStdout.split('\n').map((name) => name.trim()).filter(Boolean)
@@ -98,7 +114,7 @@ async function fetchServerStatus() {
     online: result.code === 0,
     route: result.route || 'Conexão Segura',
     runningContainers,
-    activeTunnels: sanitizePublicTunnels(getCachedTunnels()),
+    activeTunnels: sanitizePublicTunnels({ ...fileTunnels, ...getCachedTunnels() }),
     ...parsed,
   };
 }

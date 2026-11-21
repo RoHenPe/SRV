@@ -1,4 +1,6 @@
 import { runSSH, getCachedTunnels, apiHandler } from '@/lib/ssh';
+import { startNgrok } from '@/lib/ngrok';
+import { sanitizeSensitiveText } from '@/lib/sanitize';
 
 export const maxDuration = 60;
 
@@ -25,7 +27,7 @@ EOF
         if ! docker exec srv_webtop_sandbox ps aux | grep -q '[m].server 8085'; then
           docker exec -d -u abc srv_webtop_sandbox python3 -m http.server 8085 --directory /config
         fi
-        if ! pgrep -f 'server_photos_backup.py' >/dev/null 2>&1; then
+        if ! pgrep -f '[s]erver_photos_backup.py' >/dev/null 2>&1; then
           nohup python3 /home/rodrigo/server_photos_backup.py </dev/null >>/home/rodrigo/google_photos_picker.log 2>&1 &
           sleep 1.5
         fi
@@ -38,12 +40,17 @@ EOF
       }
 
       const tunnels = getCachedTunnels();
-      const webtopUrl = tunnels['13000'] || tunnels['3000'] || null;
+      let webtopUrl = tunnels['13000'] || tunnels['3000'] || null;
+      if (!webtopUrl) {
+        try {
+          webtopUrl = await startNgrok(3000, 'http:', 'tunnel');
+        } catch (_) {}
+      }
 
       return {
         ok: true,
         message: 'Sincronização do Google Fotos iniciada.',
-        output: out || 'Sincronização iniciada no Webtop.',
+        output: sanitizeSensitiveText(out || 'Sincronização iniciada no Webtop.', { maskTunnels: false }),
         ...(webtopUrl ? { url: webtopUrl } : {}),
       };
     },

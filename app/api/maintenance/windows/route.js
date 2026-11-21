@@ -1,4 +1,5 @@
 import { runSSH, apiHandler } from '@/lib/ssh';
+import { sanitizeSensitiveText } from '@/lib/sanitize';
 
 // GET /api/maintenance/windows — roundtrip único para ISOs, status VM e relatórios
 export async function GET(request) {
@@ -75,7 +76,7 @@ export async function POST(request) {
       return {
         ok: true,
         message,
-        output: result.stdout || result.stderr || '',
+        output: sanitizeSensitiveText(result.stdout || result.stderr || ''),
       };
     },
     request,

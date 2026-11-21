@@ -39,7 +39,7 @@ async function handleUsersError(err, request, routeName) {
 export async function GET(request) {
   try {
     const caller = await requireAuth(request);
-    const sessions = await getActiveSessions();
+    const sessions = await getActiveSessions(true);
     const isAdmin = caller.role === 'admin';
 
     const sanitizedSessions = (isAdmin
@@ -166,7 +166,7 @@ export async function DELETE(request) {
 
     if (sessionId) {
       if (caller.role !== 'admin' && sessionId !== caller.deviceId) {
-        const sessions = await getActiveSessions();
+        const sessions = await getActiveSessions(true);
         const target = sessions.find((s) => s.deviceId === sessionId);
         if (!target || target.username !== caller.username) {
           return Response.json({ ok: false, error: 'Sem permissão para revogar esta sessão.' }, { status: 403 });

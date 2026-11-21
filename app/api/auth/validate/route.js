@@ -6,6 +6,7 @@ import {
   verifyPassword,
   touchDeviceSession,
   createSessionCookieValue,
+  createSessionToken,
   buildAuthCookieHeader,
   AuthError,
 } from '@/lib/auth';
@@ -66,6 +67,7 @@ export async function POST(request) {
           ip,
         });
         const cookieVal = createSessionCookieValue('admin', 'admin');
+        const sessionToken = createSessionToken('admin', 'admin');
         const headers = new Headers();
         if (cookieVal) {
           headers.set('Set-Cookie', buildAuthCookieHeader(cookieVal, isHttps, false));
@@ -73,7 +75,7 @@ export async function POST(request) {
         return Response.json(
           {
             ok: true,
-            token: process.env.API_KEY,
+            token: sessionToken || process.env.API_KEY,
             username: 'admin',
             role: 'admin',
             deviceId: resolvedDeviceId,
@@ -96,7 +98,7 @@ export async function POST(request) {
       }
 
       const role = user.role || 'admin';
-      const token = Buffer.from(`${body.username}:${body.password}`).toString('base64');
+      const token = createSessionToken(user.username, role) || Buffer.from(`${body.username}:${body.password}`).toString('base64');
       await touchDeviceSession({
         deviceId: resolvedDeviceId,
         deviceName: resolvedDeviceName,

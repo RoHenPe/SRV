@@ -48,7 +48,13 @@ function isAllowedProxyTarget(targetUrl) {
 
   if (allowedHosts.has(host)) return true;
   if (host.endsWith('.trycloudflare.com')) return true;
-  if (host.endsWith('.ngrok-free.app') || host.endsWith('.ngrok.io')) return true;
+  if (/\.(?:ngrok(?:-free)?\.(?:app|dev|io))$/.test(host)) return true;
+  if (host === 'bore.pub') {
+    const portNum = parseInt(targetUrl.port || '80', 10);
+    if (portNum >= 1024 && portNum <= 65535 && !new Set([42204, 45432, 48022]).has(portNum)) {
+      return true;
+    }
+  }
   if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+$/.test(host)) return true;
 
   return false;
@@ -133,11 +139,13 @@ async function handleProxy(request) {
     const contentType = upstream.headers.get('content-type') || '';
     if (contentType.includes('text/html')) {
       let html = await upstream.text();
-      const baseTag = `<base href="${targetUrl.origin}/">`;
-      if (html.includes('<head>')) {
-        html = html.replace('<head>', `<head>${baseTag}`);
-      } else {
-        html = `${baseTag}${html}`;
+      if (targetUrl.protocol === 'https:') {
+        const baseTag = `<base href="${targetUrl.origin}/">`;
+        if (html.includes('<head>')) {
+          html = html.replace('<head>', `<head>${baseTag}`);
+        } else {
+          html = `${baseTag}${html}`;
+        }
       }
       return new NextResponse(html, {
         status: upstream.status,

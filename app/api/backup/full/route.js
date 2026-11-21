@@ -22,7 +22,7 @@ export async function POST(request) {
           echo "STATE:UNMOUNTED"
           exit 0
         fi
-        if pgrep -f "run_headless.py --worker" >/dev/null 2>&1; then
+        if pgrep -f "[r]un_headless.py --worker" >/dev/null 2>&1; then
           echo "STATE:ALREADY_RUNNING"
           exit 0
         fi

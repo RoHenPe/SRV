@@ -1,4 +1,5 @@
 import { runSSH, apiHandler } from '@/lib/ssh';
+import { sanitizeSensitiveText } from '@/lib/sanitize';
 
 // GET /api/backup/status — retorna o status do processo de backup e as últimas linhas do log (single roundtrip)
 export async function GET(request) {
@@ -6,11 +7,11 @@ export async function GET(request) {
     async () => {
       const cmd = `
         RUNNING="stopped"
-        if pgrep -f "run_headless.py --worker" >/dev/null 2>&1 || pgrep -f "server_photos_backup.py" >/dev/null 2>&1; then
+        if pgrep -f "[r]un_headless.py --worker" >/dev/null 2>&1 || pgrep -f "[s]erver_photos_backup.py" >/dev/null 2>&1; then
           RUNNING="running"
         fi
         echo "STATUS:$RUNNING"
-        if pgrep -f "server_photos_backup.py" >/dev/null 2>&1; then
+        if pgrep -f "[s]erver_photos_backup.py" >/dev/null 2>&1; then
           tail -n 100 ~/google_photos_picker.log 2>/dev/null || true
         else
           tail -n 100 ~/Automation/Apps/Backup/EngineCore/Log/progress.log 2>/dev/null || tail -n 100 ~/google_photos_picker.log 2>/dev/null || echo "Nenhum log disponível."
@@ -34,7 +35,7 @@ export async function GET(request) {
           .join('\n');
       }
 
-      return { ok: true, running, log: logContent };
+      return { ok: true, running, log: sanitizeSensitiveText(logContent, { maskTunnels: false }) };
     },
     request,
     'GET /api/backup/status'
