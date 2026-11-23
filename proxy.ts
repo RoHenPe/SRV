@@ -6,6 +6,8 @@ export function proxy(request: NextRequest) {
 
   // Security Headers reforçados
   response.headers.set('X-Content-Type-Options', 'nosniff');
+  response.headers.set('X-Frame-Options', 'SAMEORIGIN');
+  response.headers.set('Content-Security-Policy', "frame-ancestors 'self'");
   response.headers.set('X-XSS-Protection', '1; mode=block');
   response.headers.set('Referrer-Policy', 'no-referrer');
   response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');

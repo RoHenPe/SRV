@@ -1,7 +1,5 @@
 import { runSSH, apiHandler } from '@/lib/ssh';
-import { sanitizeSensitiveText } from '@/lib/sanitize';
-
-const MODEL_NAME_RE = /^[a-zA-Z0-9_.:/-]{1,128}$/;
+import { sanitizeSensitiveText, isValidModelName } from '@/lib/sanitize';
 
 // POST /api/ia/remove  body: { model: "model_name" } (Admin apenas)
 export async function POST(request) {
@@ -9,7 +7,7 @@ export async function POST(request) {
     async () => {
       const { model: rawModel } = await request.json();
       const model = String(rawModel || '').trim();
-      if (!model || !MODEL_NAME_RE.test(model)) {
+      if (!isValidModelName(model)) {
         throw new Error('Campo "model" é obrigatório e deve ter formato válido.');
       }
       const result = await runSSH(`ollama rm ${model}`);

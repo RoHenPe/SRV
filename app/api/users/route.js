@@ -4,6 +4,7 @@ import {
   saveUsers,
   getActiveSessions,
   revokeDeviceSession,
+  revokeUserAccess,
   touchDeviceSession,
   hashPassword,
   AuthError,
@@ -123,7 +124,7 @@ export async function POST(request) {
     }
 
     const validRole = cleanUsername === 'admin' || role === 'admin' ? 'admin' : 'operator';
-    const users = await getUsers();
+    const users = await getUsers(true);
     const existingIdx = users.findIndex((u) => u.username === cleanUsername);
     const isUpdate = existingIdx > -1;
     const passwordHash = hashPassword(password);
@@ -145,6 +146,9 @@ export async function POST(request) {
     }
 
     await saveUsers(users);
+    if (isUpdate && cleanUsername !== caller.username) {
+      await revokeUserAccess(cleanUsername);
+    }
     await logAction(isUpdate ? 'user.update' : 'user.create', 'success', {
       targetUser: cleanUsername,
       role: validRole,
@@ -193,9 +197,10 @@ export async function DELETE(request) {
       return Response.json({ ok: false, error: 'Não é possível excluir o usuário admin principal.' }, { status: 400 });
     }
 
-    let users = await getUsers();
+    let users = await getUsers(true);
     users = users.filter((u) => u.username !== username);
     await saveUsers(users);
+    await revokeUserAccess(username);
     await logAction('user.delete', 'success', {
       deletedUser: username,
       byUser: caller.username,

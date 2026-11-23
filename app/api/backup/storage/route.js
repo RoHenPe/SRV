@@ -1,4 +1,5 @@
 import { runSSH, apiHandler } from '@/lib/ssh';
+import { sanitizeSensitiveText } from '@/lib/sanitize';
 
 // GET /api/backup/storage — status de armazenamento do servidor
 export async function GET(request) {
@@ -9,7 +10,7 @@ export async function GET(request) {
       );
       const externalMounted = (result.stdout || '').includes('EXTERNAL_MOUNTED=true');
       return {
-        output: result.stdout || 'Sem dados de storage disponíveis.',
+        output: sanitizeSensitiveText(result.stdout || 'Sem dados de storage disponíveis.'),
         externalMounted,
       };
     },

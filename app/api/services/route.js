@@ -1,6 +1,7 @@
 import { runSSH, apiHandler } from '@/lib/ssh';
+import { AuthError } from '@/lib/auth';
 import { logAction } from '@/lib/logger';
-import { sanitizeSensitiveText } from '@/lib/sanitize';
+import { sanitizeSensitiveText, isValidDockerName } from '@/lib/sanitize';
 
 export const maxDuration = 60;
 
@@ -33,6 +34,9 @@ export async function POST(request) {
       }
 
       const spec = SERVICE_MAP[service];
+      if ((action !== 'start' || !spec) && ctx.userRole !== 'admin') {
+        throw new AuthError('Acesso restrito a administradores para parar ou alterar este serviço.', 403);
+      }
       let cmd = '';
 
       if (spec) {
@@ -54,7 +58,7 @@ export async function POST(request) {
               ? `cd ${spec.composeDir} && docker compose stop`
               : `cd ${spec.composeDir} && docker compose restart`;
         }
-      } else if (/^[a-zA-Z0-9_.-]+$/.test(service)) {
+      } else if (isValidDockerName(service)) {
         cmd = `docker ${action} ${service}`;
       } else {
         throw new Error('Serviço inválido.');

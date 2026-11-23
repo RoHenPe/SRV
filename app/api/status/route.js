@@ -6,15 +6,24 @@ let cachedStatusTime = 0;
 let inFlightStatusPromise = null;
 const STATUS_CACHE_TTL_MS = 3000;
 
+const HIDDEN_INFRA_PORTS = new Set(['18022', '8022', '22']);
+
 function sanitizePublicTunnels(rawTunnels) {
   const clean = {};
   if (!rawTunnels || typeof rawTunnels !== 'object') return clean;
   for (const [k, v] of Object.entries(rawTunnels)) {
+    const keyStr = String(k).trim();
+    if (HIDDEN_INFRA_PORTS.has(keyStr)) continue;
     if (
       typeof v === 'string' &&
       /^https:\/\/[-a-zA-Z0-9]+\.(?:trycloudflare\.com|ngrok(?:-free)?\.(?:app|dev|io))$/i.test(v.trim())
     ) {
-      clean[k] = v.trim();
+      const url = v.trim();
+      clean[keyStr] = url;
+      const numPort = parseInt(keyStr, 10);
+      if (numPort > 10000 && numPort < 20000) {
+        clean[String(numPort - 10000)] = url;
+      }
     }
   }
   return clean;
@@ -81,13 +90,14 @@ function parseStatus(stdout) {
 
 async function fetchServerStatus() {
   const combinedCmd =
-    'uptime && free -m && (timeout 4 df -lhP -x overlay -x tmpfs -x devtmpfs -x squashfs 2>/dev/null || df -h) && echo "===DOCKER===" && (timeout 5 docker ps --format "{{.Names}}" || true) && echo "===TUNNELS===" && (cat ~/.cloudflare_tunnels.json 2>/dev/null || echo "{}")';
+    'uptime && free -m && (timeout 4 df -lhP -x overlay -x tmpfs -x devtmpfs -x squashfs 2>/dev/null || df -h) && echo "===DOCKER===" && (timeout 5 docker ps --format "{{.Names}}" || true) && echo "===TUNNELS===" && (cat ~/.cloudflare_tunnels.json 2>/dev/null || echo "{}") && echo "===CFLOGS===" && (for f in /tmp/cf_*.log; do [ -f "$f" ] || continue; grep -qE "Tunnel server stopped|no more connections active|status 429" "$f" && continue; u=$(grep -o "https://[-a-zA-Z0-9]*\\.trycloudflare\\.com" "$f" | tail -n 1); [ -n "$u" ] && echo "${f#/tmp/cf_}:$u"; done 2>/dev/null || true)';
   const result = await runSSH(combinedCmd, 18000);
 
   const parts = result.stdout.split(/===[A-Z0-9_]+===/);
   const sysStdout = parts[0] || '';
   const dockerStdout = parts[1] || '';
   const tunnelsStdout = (parts[2] || '').trim();
+  const cfLogsStdout = (parts[3] || '').trim();
 
   let fileTunnels = {};
   if (tunnelsStdout) {
@@ -104,6 +114,16 @@ async function fetchServerStatus() {
     } catch (_) {}
   }
 
+  const dynamicCfTunnels = {};
+  if (cfLogsStdout) {
+    for (const line of cfLogsStdout.split('\n')) {
+      const m = line.trim().match(/^(\d+)\.log:(https:\/\/[-a-zA-Z0-9]+\.trycloudflare\.com)$/);
+      if (m) {
+        dynamicCfTunnels[m[1]] = m[2];
+      }
+    }
+  }
+
   const runningContainers = dockerStdout
     ? dockerStdout.split('\n').map((name) => name.trim()).filter(Boolean)
     : [];
@@ -118,7 +138,7 @@ async function fetchServerStatus() {
     online: true,
     route: result.route || 'Conexão Segura',
     runningContainers,
-    activeTunnels: sanitizePublicTunnels({ ...fileTunnels, ...getCachedTunnels() }),
+    activeTunnels: sanitizePublicTunnels({ ...fileTunnels, ...dynamicCfTunnels, ...getCachedTunnels() }),
     ...parsed,
   };
 }

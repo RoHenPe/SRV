@@ -1,4 +1,5 @@
 import { runSSH, apiHandler } from '@/lib/ssh';
+import { sanitizeSensitiveText } from '@/lib/sanitize';
 
 export const maxDuration = 60;
 
@@ -12,7 +13,7 @@ export async function POST(request) {
       );
       return {
         message: 'Atualização do sistema concluída.',
-        output: result.stdout || result.stderr,
+        output: sanitizeSensitiveText(result.stdout || result.stderr),
       };
     },
     request,

@@ -64,44 +64,59 @@ export default function RootLayout({ children }) {
                     return this.split(str).join(newStr);
                   };
                 }
-                // Unwrap @layer for LG WebOS TVs (Chromium < 99) where @layer rules are ignored
+                // Unwrap @layer ONLY on legacy browsers (e.g. LG WebOS TVs, Chromium < 99) where @layer rules are unsupported
+                function supportsCssCascadeLayers() {
+                  try {
+                    if (typeof window.CSSLayerBlockRule === 'function') return true;
+                    var testStyle = document.createElement('style');
+                    testStyle.textContent = '@layer _srv{._t{color:#000}}';
+                    (document.head || document.documentElement).appendChild(testStyle);
+                    var ok = Boolean(testStyle.sheet && testStyle.sheet.cssRules && testStyle.sheet.cssRules.length > 0);
+                    if (testStyle.parentNode) testStyle.parentNode.removeChild(testStyle);
+                    return ok;
+                  } catch (e) {
+                    return false;
+                  }
+                }
                 function fixTvStyles() {
                   try {
-                    if (window.CSS && CSS.supports && CSS.supports('selector(:is(a))') && CSS.supports('top', '0px')) {
-                      // Even if CSS.supports exists, check if @layer is unsupported
-                    }
+                    if (supportsCssCascadeLayers()) return;
                     var sheets = document.querySelectorAll('link[rel="stylesheet"]');
-                    sheets.forEach(function(link) {
-                      if (link.dataset.tvFixed || !link.href || link.href.indexOf('/_next/static/') === -1) return;
-                      link.dataset.tvFixed = '1';
-                      fetch(link.href).then(function(r){ return r.text(); }).then(function(css){
-                        var flat = css
-                          .replace(/@layer\\s+[a-zA-Z0-9_.,\\s-]+;/g, '')
-                          .replace(/@layer\\s+[a-zA-Z0-9_-]+\\s*\\{/g, '@media all {')
-                          .replace(/@supports\\s*\\(\\(\\(-webkit-hyphens:none\\)\\)[^\\{]+\\{/g, '@media all {')
-                          .replace(/--tw-leading:initial;/g, '')
-                          .replace(/--tw-font-weight:initial;/g, '')
-                          .replace(/--tw-tracking:initial;/g, '')
-                          .replace(/padding-inline:([^;\\}]+)/g, 'padding-left:$1;padding-right:$1')
-                          .replace(/padding-block:([^;\\}]+)/g, 'padding-top:$1;padding-bottom:$1')
-                          .replace(/margin-inline:([^;\\}]+)/g, 'margin-left:$1;margin-right:$1')
-                          .replace(/margin-block:([^;\\}]+)/g, 'margin-top:$1;margin-bottom:$1')
-                          .replace(/([\\{;])inset:0(px)?([;\\}])/g, '$1top:0;right:0;bottom:0;left:0$3')
-                          .split('../media/').join('/_next/static/media/')
-                          .replace(/100dvh/g, '100vh');
-                        var s = document.createElement('style');
-                        s.textContent = flat;
-                        document.head.appendChild(s);
-                      }).catch(function(){});
-                    });
+                    for (var i = 0; i < sheets.length; i++) {
+                      (function(link) {
+                        if (link.dataset.tvFixed || !link.href || link.href.indexOf('/_next/static/') === -1) return;
+                        link.dataset.tvFixed = '1';
+                        fetch(link.href).then(function(r){ return r.text(); }).then(function(css){
+                          var flat = css
+                            .replace(/@layer\\s+[a-zA-Z0-9_.,\\s-]+;/g, '')
+                            .replace(/@layer\\s+[a-zA-Z0-9_-]+\\s*\\{/g, '@media all {')
+                            .replace(/@supports\\s*\\(\\(\\(-webkit-hyphens:none\\)\\)[^\\{]+\\{/g, '@media all {')
+                            .replace(/--tw-leading:initial;/g, '')
+                            .replace(/--tw-font-weight:initial;/g, '')
+                            .replace(/--tw-tracking:initial;/g, '')
+                            .replace(/padding-inline:([^;\\}]+)/g, 'padding-left:$1;padding-right:$1')
+                            .replace(/padding-block:([^;\\}]+)/g, 'padding-top:$1;padding-bottom:$1')
+                            .replace(/margin-inline:([^;\\}]+)/g, 'margin-left:$1;margin-right:$1')
+                            .replace(/margin-block:([^;\\}]+)/g, 'margin-top:$1;margin-bottom:$1')
+                            .replace(/([\\{;])inset:0(px)?([;\\}])/g, '$1top:0;right:0;bottom:0;left:0$3')
+                            .split('../media/').join('/_next/static/media/')
+                            .replace(/100dvh/g, '100vh');
+                          var s = document.createElement('style');
+                          s.textContent = flat;
+                          document.head.appendChild(s);
+                        }).catch(function(){});
+                      })(sheets[i]);
+                    }
                   } catch(e) {}
                 }
-                if (document.readyState === 'loading') {
-                  document.addEventListener('DOMContentLoaded', fixTvStyles);
-                } else {
-                  fixTvStyles();
+                if (!supportsCssCascadeLayers()) {
+                  if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', fixTvStyles);
+                  } else {
+                    fixTvStyles();
+                  }
+                  setTimeout(fixTvStyles, 800);
                 }
-                setTimeout(fixTvStyles, 800);
               })();
             `,
           }}

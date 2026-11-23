@@ -1,14 +1,12 @@
 import { runSSH, apiHandler } from '@/lib/ssh';
-import { sanitizeSensitiveText } from '@/lib/sanitize';
-
-const CONTAINER_NAME_RE = /^[a-zA-Z0-9_.-]{1,128}$/;
+import { sanitizeSensitiveText, isValidDockerName } from '@/lib/sanitize';
 
 export async function POST(request) {
   return apiHandler(
     async () => {
       const { name: rawName } = await request.json();
       const name = String(rawName || '').trim();
-      if (!name || !CONTAINER_NAME_RE.test(name)) {
+      if (!isValidDockerName(name)) {
         throw new Error('Nome de container inválido ou ausente.');
       }
       const result = await runSSH(`docker unpause ${name} >/dev/null 2>&1 || true; docker stop ${name}`);

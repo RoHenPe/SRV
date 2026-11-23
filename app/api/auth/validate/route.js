@@ -21,12 +21,6 @@ function isHttpsRequest(request) {
   return proto.includes('https') || Boolean(process.env.VERCEL);
 }
 
-function timingSafeMatchesEnvKey(value) {
-  const envKey = (process.env.API_KEY || '').replace(/\\n|\\r/g, '').trim().replace(/^['"]|['"]$/g, '').trim();
-  if (!envKey || typeof value !== 'string' || value.length !== envKey.length) return false;
-  return crypto.timingSafeEqual(Buffer.from(value, 'utf-8'), Buffer.from(envKey, 'utf-8'));
-}
-
 export async function POST(request) {
   const startTime = Date.now();
   const deviceId = getClientDeviceId(request);
@@ -51,11 +45,14 @@ export async function POST(request) {
     const resolvedDeviceName = body.deviceName || deviceName;
 
     if (body.username && body.password) {
-      if (
-        timingSafeMatchesEnvKey(body.password) ||
-        timingSafeMatchesEnvKey(body.username) ||
-        verifyBootstrapAdminCredentials(body.username, body.password)
-      ) {
+      if (!checkRateLimit(request, 'LOGIN_PASSWORD_ATTEMPTS', { max: 20, windowMs: 60000, perIpOnly: true })) {
+        return Response.json(
+          { ok: false, error: 'Muitas tentativas de login deste endereço. Aguarde 1 minuto.' },
+          { status: 429 }
+        );
+      }
+
+      if (verifyBootstrapAdminCredentials(body.username, body.password)) {
         await touchDeviceSession({
           deviceId: resolvedDeviceId,
           deviceName: resolvedDeviceName,
@@ -74,8 +71,8 @@ export async function POST(request) {
           }).catch(() => {}),
           new Promise((r) => setTimeout(r, 1500)),
         ]);
-        const cookieVal = createSessionCookieValue('admin', 'admin');
-        const sessionToken = createSessionToken('admin', 'admin');
+        const cookieVal = createSessionCookieValue('admin', 'admin', resolvedDeviceId);
+        const sessionToken = createSessionToken('admin', 'admin', resolvedDeviceId);
         const headers = new Headers();
         if (cookieVal) {
           headers.set('Set-Cookie', buildAuthCookieHeader(cookieVal, isHttps, false));
@@ -92,7 +89,7 @@ export async function POST(request) {
         );
       }
 
-      const users = await getUsers();
+      const users = await getUsers(true);
       const user = users.find((u) => u.username === body.username && verifyPassword(body.password, u));
 
       if (!user) {
@@ -106,7 +103,9 @@ export async function POST(request) {
       }
 
       const role = user.role || 'admin';
-      const token = createSessionToken(user.username, role) || Buffer.from(`${body.username}:${body.password}`).toString('base64');
+      const token =
+        createSessionToken(user.username, role, resolvedDeviceId) ||
+        Buffer.from(`${body.username}:${body.password}`).toString('base64');
       await touchDeviceSession({
         deviceId: resolvedDeviceId,
         deviceName: resolvedDeviceName,
@@ -127,7 +126,7 @@ export async function POST(request) {
         new Promise((r) => setTimeout(r, 1500)),
       ]);
 
-      const cookieVal = createSessionCookieValue(user.username, role);
+      const cookieVal = createSessionCookieValue(user.username, role, resolvedDeviceId);
       const headers = new Headers();
       if (cookieVal) {
         headers.set('Set-Cookie', buildAuthCookieHeader(cookieVal, isHttps, false));
@@ -159,10 +158,25 @@ export async function POST(request) {
       route: '/api/auth/validate',
       activeView: body.activeView,
       activeApp: body.activeApp,
+      tokenDeviceId: user.tokenDeviceId || null,
+      tokenIat: user.tokenIat || 0,
     });
 
-    const role = user.role || 'admin';
-    const cookieVal = createSessionCookieValue(user.username, role);
+    let role = user.role || 'admin';
+    if (user.username !== 'admin') {
+      const liveUsers = await getUsers();
+      const liveUser = liveUsers.find((u) => u.username === user.username);
+      if (!liveUser) {
+        throw new AuthError('Usuário removido ou acesso revogado.', 401);
+      }
+      role = liveUser.role || 'operator';
+    }
+
+    const cookieVal = createSessionCookieValue(
+      user.username,
+      role,
+      resolvedDeviceId !== 'default-device' ? resolvedDeviceId : user.tokenDeviceId || null
+    );
     const headers = new Headers();
     if (cookieVal) {
       headers.set('Set-Cookie', buildAuthCookieHeader(cookieVal, isHttps, false));

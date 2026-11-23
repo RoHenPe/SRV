@@ -79,6 +79,7 @@ export function useApi() {
       if (res.status === 401) {
         if (typeof window !== 'undefined') {
           localStorage.removeItem('dashboard-token');
+          localStorage.removeItem('srv-user-role');
           window.location.href = '/login';
         }
         throw new Error('Sessão expirada. Faça login novamente.');

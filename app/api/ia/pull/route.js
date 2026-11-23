@@ -1,9 +1,7 @@
 import { runSSH, apiHandler } from '@/lib/ssh';
-import { sanitizeSensitiveText } from '@/lib/sanitize';
+import { sanitizeSensitiveText, isValidModelName } from '@/lib/sanitize';
 
 export const maxDuration = 60;
-
-const MODEL_NAME_RE = /^[a-zA-Z0-9_.:/-]{1,128}$/;
 
 // POST /api/ia/pull  body: { model: "llama3" } (Admin apenas)
 export async function POST(request) {
@@ -11,7 +9,7 @@ export async function POST(request) {
     async () => {
       const { model: rawModel } = await request.json();
       const model = String(rawModel || '').trim();
-      if (!model || !MODEL_NAME_RE.test(model)) {
+      if (!isValidModelName(model)) {
         throw new Error('Campo "model" é obrigatório e deve ter formato válido.');
       }
       const result = await runSSH(`ollama pull ${model}`, 60000);

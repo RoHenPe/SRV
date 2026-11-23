@@ -1,4 +1,5 @@
 import { runSSH, apiHandler } from '@/lib/ssh';
+import { sanitizeSensitiveText } from '@/lib/sanitize';
 
 // POST /api/maintenance/clean — remove arquivos temporários (Admin apenas)
 export async function POST(request) {
@@ -12,7 +13,7 @@ export async function POST(request) {
         echo "=== Limpeza concluída com sucesso! ==="
       `;
       const result = await runSSH(cleanCmd);
-      return { message: 'Limpeza executada com sucesso.', output: result.stdout };
+      return { message: 'Limpeza executada com sucesso.', output: sanitizeSensitiveText(result.stdout) };
     },
     request,
     'POST /api/maintenance/clean',

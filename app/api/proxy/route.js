@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import { requireAuth, AuthError } from '@/lib/auth';
+import { getCachedTunnels } from '@/lib/ssh';
 import { logWarn } from '@/lib/logger';
 import { getClientIp, getClientDeviceId, getClientDeviceName, checkRateLimit } from '@/lib/rateLimit';
 import { classifyError, recordErrorFlow } from '@/lib/errorFlow';
 import { formatClientSafeError } from '@/lib/sanitize';
 
 const ALLOWED_CORS_ORIGIN = process.env.NEXT_PUBLIC_APP_ORIGIN || 'https://srvdash.vercel.app';
+const BLOCKED_BORE_PORTS = new Set([22, 5432, 42204, 45432, 48022]);
 
 function getCorsOrigin(request) {
   const origin = request.headers?.get?.('origin') || '';
@@ -25,6 +27,9 @@ function isAllowedProxyTarget(targetUrl) {
   if (!targetUrl || !['http:', 'https:'].includes(targetUrl.protocol)) {
     return false;
   }
+  if (targetUrl.username || targetUrl.password) {
+    return false;
+  }
   const host = (targetUrl.hostname || '').toLowerCase().trim();
   if (!host) return false;
 
@@ -38,22 +43,22 @@ function isAllowedProxyTarget(targetUrl) {
     return false;
   }
 
-  const allowedHosts = new Set(
+  const allowedLanHosts = new Set(
     [
-      (process.env.SSH_HOST || '').split(':')[0].toLowerCase(),
-      (process.env.SSH_HOST_VPN || '').split(':')[0].toLowerCase(),
       (process.env.SSH_HOST_LAN || '').split(':')[0].toLowerCase(),
-    ].filter(Boolean)
+      (process.env.SSH_HOST_VPN || '').split(':')[0].toLowerCase(),
+    ].filter((h) => h && h !== 'bore.pub')
   );
 
-  if (allowedHosts.has(host)) return true;
+  if (allowedLanHosts.has(host)) return true;
   if (host.endsWith('.trycloudflare.com')) return true;
   if (/\.(?:ngrok(?:-free)?\.(?:app|dev|io))$/.test(host)) return true;
   if (host === 'bore.pub') {
     const portNum = parseInt(targetUrl.port || '80', 10);
-    if (portNum >= 1024 && portNum <= 65535 && !new Set([42204, 45432, 48022]).has(portNum)) {
-      return true;
-    }
+    if (BLOCKED_BORE_PORTS.has(portNum)) return false;
+    const knownTunnels = Object.values(getCachedTunnels());
+    const expectedOrigin = `${targetUrl.protocol}//${targetUrl.host}`;
+    return knownTunnels.some((u) => typeof u === 'string' && u.startsWith(expectedOrigin));
   }
   if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+$/.test(host)) return true;
 
@@ -113,6 +118,7 @@ async function handleProxy(request) {
       method: request.method,
       headers,
       redirect: 'manual',
+      signal: AbortSignal.timeout(15000),
     };
 
     if (!['GET', 'HEAD'].includes(request.method)) {
@@ -130,6 +136,7 @@ async function handleProxy(request) {
       outHeaders.set(key, value);
     });
     outHeaders.set('Access-Control-Allow-Origin', corsOrigin);
+    outHeaders.set('Vary', 'Origin');
     outHeaders.set('Access-Control-Allow-Credentials', 'true');
     outHeaders.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
     outHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Device-Id, X-Device-Name');
@@ -141,8 +148,8 @@ async function handleProxy(request) {
       let html = await upstream.text();
       if (targetUrl.protocol === 'https:') {
         const baseTag = `<base href="${targetUrl.origin}/">`;
-        if (html.includes('<head>')) {
-          html = html.replace('<head>', `<head>${baseTag}`);
+        if (/<head[^>]*>/i.test(html)) {
+          html = html.replace(/<head([^>]*)>/i, `<head$1>${baseTag}`);
         } else {
           html = `${baseTag}${html}`;
         }

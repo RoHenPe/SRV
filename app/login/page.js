@@ -38,6 +38,7 @@ export default function LoginPage() {
       }
 
       localStorage.setItem('dashboard-token', data.token);
+      localStorage.setItem('srv-user-role', data.role || 'operator');
       router.push('/');
     } catch (err) {
       setError('Erro de conexão. Tente novamente.');

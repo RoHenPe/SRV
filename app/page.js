@@ -54,8 +54,10 @@ async function apiFetch(url, options = {}) {
   if (res.status === 401) {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('dashboard-token');
+      localStorage.removeItem('srv-user-role');
       window.location.href = '/login';
     }
+    throw new Error('Sessão expirada.');
   }
 
   return res.json();
@@ -108,7 +110,9 @@ export default function DashboardPage() {
   const [serverStatus, setServerStatus] = useState(null);
   const [theme, setTheme] = useState('light');
   const [authValid, setAuthValid] = useState(typeof window !== 'undefined' ? !!localStorage.getItem('dashboard-token') : false);
-  const [userRole, setUserRole] = useState('admin');
+  const [userRole, setUserRole] = useState(() =>
+    typeof window !== 'undefined' && localStorage.getItem('srv-user-role') === 'admin' ? 'admin' : 'operator'
+  );
   const [activeTab, setActiveTab] = useState('home'); // home, docker, ia, backup, users, maintenance, or app config
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [confirmState, setConfirmState] = useState({
@@ -236,13 +240,16 @@ export default function DashboardPage() {
 
         if (res.status === 401 || res.status === 403) {
           localStorage.removeItem('dashboard-token');
+          localStorage.removeItem('srv-user-role');
           window.location.href = '/login';
           return;
         }
 
         const data = await res.json();
         if (data.ok) {
-          setUserRole(data.role || 'admin');
+          const resolvedRole = data.role || 'operator';
+          localStorage.setItem('srv-user-role', resolvedRole);
+          setUserRole(resolvedRole);
           setAuthValid(true);
         } else {
           setAuthValid(true);
@@ -329,6 +336,7 @@ export default function DashboardPage() {
 
   const handleLogout = () => {
     localStorage.removeItem('dashboard-token');
+    localStorage.removeItem('srv-user-role');
     fetch('/api/auth/validate', { method: 'DELETE' }).catch(() => {});
     router.push('/login');
   };
@@ -1603,26 +1611,45 @@ function BackupView({ serverStatus, addToast }) {
   const [loading, setLoading] = useState(false);
   const [photosLoading, setPhotosLoading] = useState(false);
 
-  // Poll status/logs every 3 seconds
+  // Adaptive polling: 3s while backup is actively running, 10s when idle, paused when hidden
   useEffect(() => {
     let active = true;
+    let timer = null;
+
+    const scheduleNext = (delayMs) => {
+      if (!active) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(fetchStatus, delayMs);
+    };
+
     const fetchStatus = async () => {
+      if (typeof document !== 'undefined' && document.hidden) {
+        scheduleNext(10000);
+        return;
+      }
+      let nextDelay = 10000;
       try {
         const data = await apiFetch('/api/backup/status');
         if (active && data.ok) {
           setOutput(data.log || '');
-          setLoading(data.running);
+          setLoading(Boolean(data.running));
+          nextDelay = data.running ? 3000 : 10000;
         }
       } catch (err) {
         console.error('Failed to fetch backup status:', err);
       }
+      scheduleNext(nextDelay);
     };
 
-    fetchStatus(); // Fetch immediately on mount
-    const interval = setInterval(fetchStatus, 3000);
+    fetchStatus();
+    const onVisibility = () => {
+      if (!document.hidden) fetchStatus();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
       active = false;
-      clearInterval(interval);
+      if (timer) clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
 

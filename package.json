@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build && node scripts/postbuild-compat.mjs",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "tsx --test tests/*.test.mjs"
   },
   "dependencies": {
     "@vercel/analytics": "^2.0.1",
