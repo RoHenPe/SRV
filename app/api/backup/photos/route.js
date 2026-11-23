@@ -27,7 +27,7 @@ EOF
         if ! docker exec srv_webtop_sandbox ps aux | grep -q '[m].server 8085'; then
           docker exec -d -u abc srv_webtop_sandbox python3 -m http.server 8085 --directory /config
         fi
-        if ! pgrep -f '[s]erver_photos_backup.py' >/dev/null 2>&1; then
+        if ! ps -eo comm=,args= 2>/dev/null | grep -E "^python" | grep -q "server_photos_backup\\.py"; then
           nohup python3 /home/rodrigo/server_photos_backup.py </dev/null >>/home/rodrigo/google_photos_picker.log 2>&1 &
           sleep 1.5
         fi

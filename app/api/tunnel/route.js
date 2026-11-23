@@ -37,8 +37,9 @@ export async function POST(request) {
 
       const base = url.replace(/\/$/, '');
       let resolvedPath = typeof path === 'string' ? path : '';
-      if (Number(port) === 8888 && process.env.JUPYTER_TOKEN && !resolvedPath.includes('token=')) {
-        resolvedPath = `/lab?token=${encodeURIComponent(process.env.JUPYTER_TOKEN)}`;
+      const jupyterToken = (process.env.JUPYTER_TOKEN || '').replace(/\\n|\\r/g, '').trim();
+      if (Number(port) === 8888 && jupyterToken && !resolvedPath.includes('token=')) {
+        resolvedPath = `/lab?token=${encodeURIComponent(jupyterToken)}`;
       }
       url = `${base}${resolvedPath}`;
 

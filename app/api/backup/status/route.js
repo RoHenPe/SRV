@@ -7,11 +7,15 @@ export async function GET(request) {
     async () => {
       const cmd = `
         RUNNING="stopped"
-        if pgrep -f "[r]un_headless.py --worker" >/dev/null 2>&1 || pgrep -f "[s]erver_photos_backup.py" >/dev/null 2>&1; then
+        PHOTOS_RUNNING="0"
+        if ps -eo comm=,args= 2>/dev/null | grep -E "^python" | grep -q "server_photos_backup\\.py"; then
+          PHOTOS_RUNNING="1"
+          RUNNING="running"
+        elif ps -eo comm=,args= 2>/dev/null | grep -E "^python" | grep -q "run_headless\\.py --worker"; then
           RUNNING="running"
         fi
         echo "STATUS:$RUNNING"
-        if pgrep -f "[s]erver_photos_backup.py" >/dev/null 2>&1; then
+        if [ "$PHOTOS_RUNNING" = "1" ]; then
           tail -n 100 ~/google_photos_picker.log 2>/dev/null || true
         else
           tail -n 100 ~/Automation/Apps/Backup/EngineCore/Log/progress.log 2>/dev/null || tail -n 100 ~/google_photos_picker.log 2>/dev/null || echo "Nenhum log disponível."

@@ -24,7 +24,7 @@ export async function POST(request) {
           NVM_BIN=$(ls -d "$HOME"/.nvm/versions/node/*/bin 2>/dev/null | tail -n 1)
           export PATH="$NVM_BIN:$HOME/.local/bin:$PATH"
           PROMPT_TXT=$(echo "${b64Prompt}" | base64 -d)
-          agy --dangerously-skip-permissions --print="$PROMPT_TXT" </dev/null 2>&1
+          timeout 25 agy --dangerously-skip-permissions --print-timeout 22s --print="$PROMPT_TXT" </dev/null 2>&1
         `;
         const agyRes = await runSSH(agyCmd, 30000);
         return {
@@ -59,7 +59,7 @@ export async function POST(request) {
           const lastMsg = messages[messages.length - 1]?.content || '';
           const b64Prompt = Buffer.from(lastMsg, 'utf-8').toString('base64');
           const agyRes = await runSSH(
-            `NVM_BIN=$(ls -d "$HOME"/.nvm/versions/node/*/bin 2>/dev/null | tail -n 1); export PATH="$NVM_BIN:$HOME/.local/bin:$PATH"; PROMPT_TXT=$(echo "${b64Prompt}" | base64 -d); agy --dangerously-skip-permissions --print="$PROMPT_TXT" </dev/null 2>&1`,
+            `NVM_BIN=$(ls -d "$HOME"/.nvm/versions/node/*/bin 2>/dev/null | tail -n 1); export PATH="$NVM_BIN:$HOME/.local/bin:$PATH"; PROMPT_TXT=$(echo "${b64Prompt}" | base64 -d); timeout 25 agy --dangerously-skip-permissions --print-timeout 22s --print="$PROMPT_TXT" </dev/null 2>&1`,
             30000
           );
           if (agyRes.stdout?.trim()) {

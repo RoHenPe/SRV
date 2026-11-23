@@ -1,18 +1,11 @@
-import { runSSH, apiHandler } from '@/lib/ssh';
+import { apiHandler } from '@/lib/ssh';
+import { listDockerContainers } from '@/lib/docker';
 
 // GET /api/docker/all — todos os containers (incluindo parados)
 export async function GET(request) {
   return apiHandler(
     async () => {
-      const result = await runSSH("docker ps -a --format '{{json .}}'");
-      const containers = result.stdout
-        .split('\n')
-        .filter(Boolean)
-        .map((line) => {
-          try { return JSON.parse(line); }
-          catch { return null; }
-        })
-        .filter(Boolean);
+      const containers = await listDockerContainers(true);
       return { containers };
     },
     request,
