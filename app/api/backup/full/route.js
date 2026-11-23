@@ -18,7 +18,8 @@ export async function POST(request) {
       }
 
       const cmd = `
-        if ! mountpoint -q /mnt/hd_externo; then
+        timeout 2 ls /mnt/hd_externo/. >/dev/null 2>&1 || true
+        if ! findmnt -rn -o FSTYPE /mnt/hd_externo 2>/dev/null | tail -n 1 | grep -qEv '^(autofs|)$'; then
           echo "STATE:UNMOUNTED"
           exit 0
         fi
