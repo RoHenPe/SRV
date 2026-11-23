@@ -6,7 +6,7 @@ export async function GET(request) {
   return apiHandler(
     async () => {
       const result = await runSSH(
-        "df -h | grep -E '^/dev/|/mnt/|/media/'; echo '---'; mountpoint -q /mnt/hd_externo && echo 'EXTERNAL_MOUNTED=true' || echo 'EXTERNAL_MOUNTED=false'"
+        "(timeout 4 df -lhP -x overlay -x tmpfs -x devtmpfs -x squashfs 2>/dev/null || df -lh) | grep -E '^/dev/|/mnt/|/media/'; echo '---'; mountpoint -q /mnt/hd_externo && echo 'EXTERNAL_MOUNTED=true' || echo 'EXTERNAL_MOUNTED=false'"
       );
       const externalMounted = (result.stdout || '').includes('EXTERNAL_MOUNTED=true');
       return {

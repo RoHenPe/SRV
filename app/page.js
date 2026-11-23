@@ -109,10 +109,8 @@ export default function DashboardPage() {
   
   const [serverStatus, setServerStatus] = useState(null);
   const [theme, setTheme] = useState('light');
-  const [authValid, setAuthValid] = useState(typeof window !== 'undefined' ? !!localStorage.getItem('dashboard-token') : false);
-  const [userRole, setUserRole] = useState(() =>
-    typeof window !== 'undefined' && localStorage.getItem('srv-user-role') === 'admin' ? 'admin' : 'operator'
-  );
+  const [authValid, setAuthValid] = useState(false);
+  const [userRole, setUserRole] = useState('operator');
   const [activeTab, setActiveTab] = useState('home'); // home, docker, ia, backup, users, maintenance, or app config
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [confirmState, setConfirmState] = useState({
@@ -221,6 +219,10 @@ export default function DashboardPage() {
         window.location.href = '/login';
         return;
       }
+
+      const cachedRole = localStorage.getItem('srv-user-role');
+      setUserRole(cachedRole === 'admin' ? 'admin' : 'operator');
+      setAuthValid(true);
 
       try {
         const identity = getOrInitDeviceIdentity();
